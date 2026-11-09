@@ -1,4 +1,4 @@
-// Step 1 Reference: Create minimal saved agent "pr-reviewer-basic" and stream a PR inspection turn.
+// Step 1 Reference: Create minimal saved agent "pr-reviewer-basic" and stream a PR review turn.
 // Run with: bun run solution/steps/step1.ts [owner/repo]
 
 import { GoogleGenAI } from "@google/genai";
@@ -11,7 +11,7 @@ if (!apiKey) {
 
 const repo = process.argv[2] ?? "google/budoux";
 const agentId = "pr-reviewer-basic";
-const model = process.env.GEMINI_AGENT_MODEL ?? "gemini-3.8-flash";
+const model = process.env.GEMINI_AGENT_MODEL ?? "gemini-4-carbon";
 const client = new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
 
 console.log(`Step 1: Registering minimal saved agent "${agentId}" (${model}) ...`);
@@ -29,8 +29,7 @@ const stream = await client.interactions.create({
   agent: agentId,
   input:
     `Shallow-clone https://github.com/${repo}.git (--depth=1) into /workspace/repo, inspect the latest open ` +
-    `pull request (via https://api.github.com/repos/${repo}/pulls?state=open&per_page=1), run fast unit tests ` +
-    `with a 30s timeout without installing external packages, and summarize your findings.`,
+    `pull request (via https://api.github.com/repos/${repo}/pulls?state=open&per_page=1), and summarize its changes.`,
   environment: "remote",
   stream: true,
 });

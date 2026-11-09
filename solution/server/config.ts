@@ -59,7 +59,7 @@ export function isLoopbackHostname(hostname: string): boolean {
 }
 
 function parseAgentModel(source: Record<string, string | undefined>): string {
-  const agentModel = readEnv(source, "GEMINI_AGENT_MODEL") ?? "gemini-3.8-flash";
+  const agentModel = readEnv(source, "GEMINI_AGENT_MODEL") ?? "gemini-4-carbon";
   if (!/^[a-z0-9][a-z0-9.-]{1,63}$/.test(agentModel)) {
     throw new ConfigError("GEMINI_AGENT_MODEL has an invalid format.");
   }

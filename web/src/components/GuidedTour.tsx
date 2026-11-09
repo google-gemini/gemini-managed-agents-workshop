@@ -45,9 +45,9 @@ export const TOUR_STOPS: readonly TourStop[] = [
   {
     id: "steps",
     selector: '[data-tour="steps"]',
-    eyebrow: "Remote MCP + Linux Sandbox",
-    title: "One Managed Agent turn, two isolated tools",
-    body: "RepoReview pairs GitHub MCP (structured PR metadata & diffs) with an isolated Ubuntu VM where the pr-review skill checks out untrusted PR branches and runs tests.",
+    eyebrow: "GitHub MCP + Review Skill",
+    title: "GitHub MCP does the work, Skill sets the bar",
+    body: "The agent inspects PR diffs and comments through Remote GitHub MCP while applying the code review principles mounted in /.agents/skills/pr-review/SKILL.md.",
   },
   {
     id: "signout",

@@ -125,7 +125,7 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
               </div>
               <div className="kv-item">
                 <span className="kv-label">agentModel</span>
-                <code className="kv-val">{vault?.agentModel || "gemini-3.8-flash"}</code>
+                <code className="kv-val">{vault?.agentModel || "gemini-4-carbon"}</code>
               </div>
               <div className="kv-item">
                 <span className="kv-label">agentHash</span>

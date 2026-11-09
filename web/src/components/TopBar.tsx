@@ -10,7 +10,6 @@ import {
   RefreshIcon,
   SlidesIcon,
 } from "./Icons";
-import { Logo } from "./Logo";
 
 /** Masks email PII for hover titles (e.g. "p***@google.com"). */
 function maskEmail(email: string): string {
@@ -97,11 +96,6 @@ export function TopBar({
   return (
     <header className={`topbar${elevated ? " is-elevated" : ""}`}>
       <div className="topbar-left">
-        <Logo />
-        <span className={badge.className} title={badge.title}>
-          {badge.label}
-        </span>
-
         <div className="session-pill" data-tour="session" title={sessionTitle}>
           <Avatar me={me} size={22} />
           <GitHubIcon size={14} className="session-gh" />
@@ -111,6 +105,9 @@ export function TopBar({
             {authLabel}
           </span>
         </div>
+        <span className={badge.className} title={badge.title}>
+          {badge.label}
+        </span>
       </div>
 
       <div className="topbar-right">

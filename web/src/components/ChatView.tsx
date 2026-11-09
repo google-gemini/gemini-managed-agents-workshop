@@ -18,18 +18,18 @@ import { VaultDrawer } from "./VaultDrawer";
 
 const STAGE_SUGGESTIONS = [
   {
-    tag: "MCP + Sandbox Verdict",
-    text: "Review the latest open pull request on google/budoux, run its unit tests in the sandbox, and give a merge verdict",
+    tag: "GitHub MCP Review",
+    text: "Review the latest open pull request on google/budoux using GitHub MCP and give a merge verdict",
     Icon: MergeIcon,
   },
   {
-    tag: "Bugfix Smoke Test",
-    text: "List open PRs on ChromeDevTools/chrome-devtools-mcp via GitHub MCP and smoke-test the newest bugfix PR",
+    tag: "Open PR Triage",
+    text: "List open PRs on ChromeDevTools/chrome-devtools-mcp via GitHub MCP and review the newest bugfix PR",
     Icon: GitHubIcon,
   },
   {
-    tag: "Go Unit Suite",
-    text: "Inspect the newest open PR on google-gemini/gemini-api-cli and verify its Go unit tests pass in /workspace",
+    tag: "CLI Repo Review",
+    text: "Inspect the newest open PR diff on google-gemini/gemini-api-cli via GitHub MCP and check for edge cases",
     Icon: TerminalIcon,
   },
   {
@@ -116,10 +116,8 @@ function Welcome({
 }) {
   return (
     <div className="welcome">
-      <h1 className="welcome-title">
-        <span className="gradient-text">Ready to review, {name}</span>
-      </h1>
-      <p className="welcome-sub">Pick a live repository triage prompt or paste any GitHub PR</p>
+      <h1 className="welcome-title">Ready to review, {name}</h1>
+      <p className="welcome-sub">Pick a repository prompt or paste any GitHub PR</p>
       <div className="suggestions" data-tour="steps">
         {STAGE_SUGGESTIONS.map(({ tag, text, Icon }) => (
           <button key={text} type="button" className="suggestion" disabled={disabled} onClick={() => onPick(text)}>

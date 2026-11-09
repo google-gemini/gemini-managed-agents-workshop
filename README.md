@@ -28,9 +28,9 @@
 ## Workshop Steps
 
 1. **Step 1 — First Managed Agent**: Create `pr-reviewer-basic` on `antigravity-preview-09-2026` and stream a PR inspection on `google/budoux` (`solution/steps/step1.ts`).
-2. **Step 2 — Custom Agent + PR Review Skill**: Bundle `agent/AGENTS.md` and `agent/skills/pr-review/` via `agents.create` (`bun run agent:sync` / `solution/steps/step2.ts`).
+2. **Step 2 — Custom Agent + PR Review Skill**: Bundle `agent/AGENTS.md` and `agent/skills/pr-review/SKILL.md` (review principles) via `agents.create` (`bun run agent:sync` / `solution/steps/step2.ts`).
 3. **Step 3 — Zero-Leak Credentials Vault + Remote MCP**: Store `GITHUB_TOKEN` in the write-only Gemini Credential Vault, attach it to `network.allowlist` and `https://api.githubcopilot.com/mcp/`, and verify zero raw tokens exist in sandbox `os.environ` or `/proc` (`solution/steps/step3.ts`).
-4. **Step 4 — Connect the Web App**: Wire `server/auth.ts` and `server/chat.ts` (`GET /api/vault` + `POST /api/chat`) to stream live MCP calls, sandbox test execution, and PR verdicts to the React UI.
+4. **Step 4 — Connect the Web App**: Wire `server/auth.ts` and `server/chat.ts` (`GET /api/vault` + `POST /api/chat`) to stream live GitHub MCP reviews to the React UI.
 
 ## Useful Commands
 
@@ -39,5 +39,4 @@
 - `bun run agent:sync` — Register/update saved agent `pr-reviewer` from `agent/`
 - `bun run solution:sync` — Register/update saved agent `pr-reviewer` from `solution/agent/`
 - `bun run typecheck` — Typecheck backend, scripts, solution, and frontend
-- `bun run check:py` — Byte-compile the sandbox Python PR helper (`uv run python3 -m py_compile ...`)
 - `bun test` — Run automated server, stream-mapper, vault, and security tests

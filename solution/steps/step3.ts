@@ -35,9 +35,9 @@ try {
   const stream = await client.interactions.create({
     agent: "pr-reviewer",
     input:
-      `Use the github MCP server to list open pull requests on ${repo}, pick the most recent open PR, ` +
-      `run the pr-review skill in /workspace/pr on that PR, and run a short Python check inspecting os.environ ` +
-      `and /proc/self/environ to confirm zero raw GitHub tokens (ghp_ / github_pat_ / gho_) exist inside the sandbox.`,
+      `Use the github MCP server to list open pull requests on ${repo}, read the diff of the newest open PR, ` +
+      `review it using the pr-review skill, and verify in Python (os.environ and /proc/self/environ) ` +
+      `that zero raw GitHub tokens exist inside the sandbox.`,
     environment: {
       type: "remote",
       network: {
@@ -72,7 +72,7 @@ try {
       if (step?.type === "mcp_server_tool_call") {
         console.log(`\n[mcp] github.${step.name ?? "tool"}`);
       } else if (step?.type === "code_execution_call") {
-        console.log("\n[sandbox] running command in /workspace");
+        console.log("\n[sandbox] verifying environment isolation");
       }
     } else if (ev.event_type === "step.delta") {
       const delta = ev.delta as { type?: string; text?: string };

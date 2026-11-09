@@ -110,7 +110,7 @@ describe("Configuration & Loopback Binding", () => {
     expect(cfg.host).toBe("127.0.0.1");
     expect(cfg.port).toBe(3000);
     expect(cfg.agentId).toBe("pr-reviewer");
-    expect(cfg.agentModel).toBe("gemini-3.8-flash");
+    expect(cfg.agentModel).toBe("gemini-4-carbon");
 
     expect(() => loadConfig({ HOST: "0.0.0.0", SESSION_SECRET: "s".repeat(48) })).toThrow(ConfigError);
     expect(() => loadConfig({ APP_BASE_URL: "http://example.com:3000", SESSION_SECRET: "s".repeat(48) })).toThrow(
@@ -193,56 +193,32 @@ describe("Starter Server Contract & Security Hardening", () => {
   });
 });
 
-describe("Solution Agent Definition, Python Skill & Stream Mapper", () => {
+describe("Solution Agent Definition, Review Skill & Stream Mapper", () => {
   test("bundles solution/agent/ with inline sources, omits url_context, and enforces size limits", async () => {
-    const def = await buildAgentDefinition({ agentId: "pr-reviewer", agentModel: "gemini-3.8-flash" });
+    const def = await buildAgentDefinition({ agentId: "pr-reviewer", agentModel: "gemini-4-carbon" });
     expect(def.id).toBe("pr-reviewer");
     expect([...def.files].sort()).toEqual([
       "AGENTS.md",
       "skills/pr-review/SKILL.md",
-      "skills/pr-review/scripts/inspect_pr.py",
     ]);
     const tools = def.body.tools as Array<{ type: string }>;
     expect(tools.map((t) => t.type)).toEqual(["code_execution", "google_search"]);
 
     const emptyDir = path.join(TMP_DIR, "empty-agent");
     await mkdir(emptyDir, { recursive: true });
-    await expect(buildAgentDefinition({ agentId: "pr-reviewer", agentModel: "gemini-3.8-flash" }, emptyDir)).rejects.toThrow(
+    await expect(buildAgentDefinition({ agentId: "pr-reviewer", agentModel: "gemini-4-carbon" }, emptyDir)).rejects.toThrow(
       "AGENTS.md is missing",
     );
 
     const hugeDir = path.join(TMP_DIR, "huge-agent");
     await mkdir(hugeDir, { recursive: true });
     await writeFile(path.join(hugeDir, "AGENTS.md"), "x".repeat(1024 * 1024 + 10));
-    await expect(buildAgentDefinition({ agentId: "pr-reviewer", agentModel: "gemini-3.8-flash" }, hugeDir)).rejects.toThrow(
+    await expect(buildAgentDefinition({ agentId: "pr-reviewer", agentModel: "gemini-4-carbon" }, hugeDir)).rejects.toThrow(
       "exceeds the 1 MB",
     );
   });
 
-  test("inspect_pr.py detects and runs tests inside ./tmp and blocks path traversal", async () => {
-    const sampleRepo = path.join(TMP_DIR, "sample-py-pr");
-    await mkdir(path.join(sampleRepo, "tests"), { recursive: true });
-    await writeFile(
-      path.join(sampleRepo, "tests", "test_math.py"),
-      "import unittest\nclass T(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(2 + 2, 4)\n",
-    );
-
-    const scriptPath = path.join(REPO_ROOT, "solution/agent/skills/pr-review/scripts/inspect_pr.py");
-    const runProc = Bun.spawnSync(["uv", "run", "python3", scriptPath, "run-tests", "--dir", sampleRepo, "--timeout", "15"], {
-      cwd: REPO_ROOT,
-    });
-    expect(runProc.exitCode).toBe(0);
-    const parsed = JSON.parse(new TextDecoder().decode(runProc.stdout)) as { ok: boolean; exit_code: number };
-    expect(parsed.ok).toBe(true);
-    expect(parsed.exit_code).toBe(0);
-
-    const traversalProc = Bun.spawnSync(["uv", "run", "python3", scriptPath, "detect-tests", "--dir", "/etc"], {
-      cwd: REPO_ROOT,
-    });
-    expect(traversalProc.exitCode).toBe(2);
-  });
-
-  test("AgentStreamMapper maps MCP calls, sandbox skill calls, thoughts, and text deltas cleanly", () => {
+  test("AgentStreamMapper maps MCP calls, sandbox calls, thoughts, and text deltas cleanly", () => {
     const mapper = new AgentStreamMapper();
 
     expect(
