@@ -1,0 +1,43 @@
+{
+  "name": "gemini-managed-agents-workshop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AIE Code Summit 40-min Workshop: Build a GitHub PR Reviewer with Gemini Managed Agents, Skills, Credentials API, and Remote MCP.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "solution": "bun run scripts/dev.ts --solution",
+    "build": "bunx --bun vite build",
+    "start": "bunx --bun vite build && bun --env-file=.env server/index.ts",
+    "start:solution": "bunx --bun vite build && bun --env-file=.env solution/server/index.ts",
+    "agent:sync": "bun --env-file=.env scripts/sync-agent.ts",
+    "solution:sync": "bun --env-file=.env solution/scripts/sync-agent.ts",
+    "typecheck": "bunx tsc -p tsconfig.json && bunx tsc -p web/tsconfig.json",
+    "check:py": "uv run python3 -B -m py_compile solution/agent/skills/pr-review/scripts/inspect_pr.py",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@fontsource-variable/google-sans-flex": "^5.2.0",
+    "@google/genai": "latest",
+    "csrf-sync": "^4.2.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.0",
+    "express-session": "^1.18.2",
+    "helmet": "^8.1.0",
+    "memorystore": "^1.6.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/express": "^5.0.3",
+    "@types/express-session": "^1.18.2",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
