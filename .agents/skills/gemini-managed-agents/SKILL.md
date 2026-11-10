@@ -107,7 +107,7 @@ const list = await client.credentials.list();
 await client.credentials.delete(cred.id!);
 ```
 
-> Tip for CLI `step3.ts`: spin up a one-shot `Bun.serve` listener on `127.0.0.1:3000` (`/auth/github/callback`) using `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (PKCE S256, scopes `read:user user:email repo`) to exchange `code` for `access_token` at `https://github.com/login/oauth/access_token` (`Accept: "application/json"`), then store `access_token` in the vault.
+> Tip for Step 3 CLI OAuth flow: spin up a one-shot `Bun.serve` listener on `127.0.0.1:3000` (`/auth/github/callback`) using `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (PKCE S256, scopes `read:user user:email repo`) to exchange `code` for `access_token` at `https://github.com/login/oauth/access_token` (`Accept: "application/json"`), then store `access_token` in the vault.
 
 ## 4. Per-Turn Allowlist Override + Remote GitHub MCP (`mcp_server`)
 
