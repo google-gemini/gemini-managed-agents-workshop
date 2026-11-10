@@ -33,3 +33,7 @@ git checkout solution
 - `bun run build`: Build `web/` into `dist/web/`
 - `bun run typecheck`: Typecheck backend, scripts, and frontend
 - `bun test`: Run automated server and security tests
+
+## License & Disclaimer
+
+Licensed under the Apache-2.0 License. This is not an officially supported Google product. See [LICENSE](LICENSE) for the full license text.

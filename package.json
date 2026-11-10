@@ -2,6 +2,7 @@
   "name": "gemini-managed-agents-workshop",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "AIE Code Summit 40-min Workshop: Build a GitHub PR Reviewer with Gemini Managed Agents, Skills, Credentials API, and Remote MCP.",
   "type": "module",
   "scripts": {
