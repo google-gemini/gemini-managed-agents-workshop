@@ -1,14 +1,26 @@
-// Workshop server entry point: bun --env-file=.env server/index.ts
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Workshop starter server entry point: bun --env-file=.env server/index.ts
 
 import session from "express-session";
 import createMemoryStore from "memorystore";
-import { buildAgentDefinition, inspectAgentFiles, syncAgent } from "./agentDefinition.ts";
 import { createApp } from "./app.ts";
 import { ConfigError, loadConfig, type AppConfig } from "./config.ts";
-import { GeminiClient } from "./gemini.ts";
-import { startJanitor } from "./janitor.ts";
 import { describeError, log } from "./log.ts";
-import type { AgentSyncStatus } from "./types.ts";
 
 let cfg: AppConfig;
 try {
@@ -21,50 +33,22 @@ try {
   throw err;
 }
 
-const gemini = new GeminiClient(cfg.geminiApiKey);
-
-// TODO(security): use an encrypted external session store (e.g. Redis over TLS) for multi-instance deployments.
 const MemoryStore = createMemoryStore(session);
 const store = new MemoryStore({ checkPeriod: 15 * 60_000 });
 
-const agentStatus: AgentSyncStatus = { synced: false, hash: null, skillFiles: [] };
-
-const inspected = await inspectAgentFiles();
-agentStatus.skillFiles = inspected.files;
-if (inspected.hasAgentsMd) {
-  try {
-    const definition = await buildAgentDefinition(cfg);
-    agentStatus.hash = definition.hash;
-    if (gemini.isConfigured) {
-      const result = await syncAgent(gemini, definition);
-      agentStatus.synced = true;
-      log.info(`managed agent ${definition.id}: ${result}`, { config: definition.hash, files: definition.fileCount });
-    } else {
-      log.warn("GEMINI_API_KEY is not set in .env; skipping startup agent sync until configured");
-    }
-  } catch (err) {
-    log.error("could not sync agent/ on startup", { error: describeError(err) });
-  }
-} else {
-  log.info("starter mode: agent/AGENTS.md not created yet (open /slides for Step 2)");
-}
-
-const app = createApp({ cfg, gemini, store, agentStatus });
+const app = createApp({ cfg, store });
 const server = app.listen(cfg.port, cfg.host, (err?: Error) => {
   if (err) {
     log.error("server failed to start", { error: describeError(err) });
     process.exit(1);
   }
-  log.info(`PR Reviewer workshop running at ${cfg.baseUrl}`, {
+  log.info(`PR Reviewer starter running at ${cfg.baseUrl}`, {
     listen: `${cfg.host}:${cfg.port}`,
     slides: `${cfg.baseUrl}/slides`,
   });
 });
 
-const stopJanitor = startJanitor(gemini, store);
-
 function shutdown(): void {
-  stopJanitor();
   store.stopInterval();
   server.close(() => process.exit(0));
   server.closeAllConnections();

@@ -1,26 +1,29 @@
-// Step 4 Starter Stub: `GET /api/vault`, `POST /api/chat`, and `POST /api/chat/reset`.
-//
-// In Workshop Step 4 (see http://localhost:3000/slides and `.agents/skills/gemini-managed-agents/SKILL.md`):
-//   1. Flip `WORKSHOP_MODE` to `"configured"`, `MCP_ENABLED` to `true`, and `CHAT_ALLOWLIST` to `TURN_ALLOWLIST_DOMAINS`.
-//   2. Implement `GET /api/vault` (`router.get("/vault", ...)`) calling `gemini.listCredentials()` to return
-//      sanitized credential metadata plus active agent, mounted skills, MCP, allowlist, and sandbox environment status.
-//   3. Implement `POST /api/chat` (`router.post("/chat", ...)`) calling `gemini.streamInteraction(...)`
-//      (or `new GoogleGenAI().interactions.create({ ..., stream: true })`) targeting `agent: cfg.agentId` (`"pr-reviewer"`),
-//      attaching `req.session.credentialId` to `environment.network.allowlist` and the `github` `mcp_server` tool
-//      (`https://api.githubcopilot.com/mcp/`), and piping frames through `new AgentStreamMapper()` (`./agentStream.ts`).
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Starter chat & vault routes (`GET /api/vault`, `POST /api/chat`, `POST /api/chat/reset`).
+// Wire `pr-reviewer`, Gemini Credential Vault status, and SSE streaming here in Step 4.
 
 import { randomUUID } from "node:crypto";
 import { Router, type Request, type Response } from "express";
-import { buildAgentDefinition, DEFAULT_AGENT_DIR, inspectAgentFiles } from "./agentDefinition.ts";
 import type { AppConfig } from "./config.ts";
-import type { GeminiClient } from "./gemini.ts";
-import { describeError, log } from "./log.ts";
 import { chatLimiter } from "./security.ts";
-import type { AgentSyncStatus, ChatState, StoredMessage, StoredStep, WorkshopMode } from "./types.ts";
+import type { ChatState, StoredMessage, StoredStep, WorkshopMode } from "./types.ts";
 
 export const WORKSHOP_MODE: WorkshopMode = "starter";
-export const MCP_ENABLED = false;
-export const CHAT_ALLOWLIST: readonly string[] = [];
 
 const MAX_MESSAGE_CHARS = 4000;
 
@@ -34,46 +37,27 @@ function parseMessage(body: unknown): string | null {
 
 export interface CreateChatRouterOptions {
   cfg: AppConfig;
-  gemini: GeminiClient;
-  agentDir?: string;
-  agentStatus?: AgentSyncStatus;
 }
 
-export function createChatRouter({
-  cfg,
-  gemini,
-  agentDir = DEFAULT_AGENT_DIR,
-  agentStatus = { synced: false, hash: null, skillFiles: [] },
-}: CreateChatRouterOptions): Router {
+export function createChatRouter({ cfg }: CreateChatRouterOptions): Router {
   const router = Router();
 
-  router.get("/vault", async (req: Request, res: Response) => {
-    const inspected = await inspectAgentFiles(agentDir);
-    let hash = agentStatus.hash;
-    if (inspected.hasAgentsMd) {
-      try {
-        hash = (await buildAgentDefinition(cfg, agentDir)).hash;
-      } catch {
-        // ignore if agent bundle exceeds size limit
-      }
-    }
-
-    // Step 4 TODO: query `await gemini.listCredentials()` and return sanitized vault rows.
+  router.get("/vault", (req: Request, res: Response) => {
     res.json({
       agentId: cfg.agentId,
-      agentSynced: agentStatus.synced,
-      agentHash: hash,
-      skillFiles: inspected.files,
+      agentSynced: false,
+      agentHash: null,
+      skillFiles: [],
       agentModel: cfg.agentModel,
-      mcpEnabled: MCP_ENABLED,
-      allowlist: [...CHAT_ALLOWLIST],
+      mcpEnabled: false,
+      allowlist: [],
       sessionCredentialId: req.session?.credentialId ?? null,
       sessionEnvironmentId: req.session?.chat?.environmentId ?? null,
       credentials: [],
     });
   });
 
-  router.post("/chat", chatLimiter, async (req: Request, res: Response) => {
+  router.post("/chat", chatLimiter, (req: Request, res: Response) => {
     const message = parseMessage(req.body);
     if (!message) return res.status(400).json({ error: "invalid_request" });
     if (!req.session.user || !req.session.credentialId) return res.status(401).json({ error: "unauthenticated" });
@@ -94,7 +78,7 @@ export function createChatRouter({
     const starterStep: StoredStep = {
       id: "t0",
       kind: "thought",
-      label: "Starter server ready — wire Steps 1–4 to connect Gemini Managed Agents",
+      label: "Starter server ready — follow PROMPTS.md and /slides to build Steps 1–4",
       state: "done",
     };
 
@@ -103,12 +87,7 @@ export function createChatRouter({
       "",
       `Received your prompt: "${message.slice(0, 120)}${message.length > 120 ? "…" : ""}"`,
       "",
-      "You are running in **starter mode**. Open [`/slides`](/slides) and pair with your coding agent (Antigravity, Claude Code, Cursor, Gemini CLI, or Codex) to build the 4 workshop steps:",
-      "",
-      "1. **Step 1 — First Managed Agent**: Create `pr-reviewer-basic` on `antigravity-preview-09-2026` and stream a PR inspection on `google/budoux`.",
-      "2. **Step 2 — Custom Agent + Skill**: Create `agent/AGENTS.md` + `agent/skills/pr-review/SKILL.md` and register saved agent `pr-reviewer` via `bun run agent:sync`.",
-      "3. **Step 3 — Credentials Vault + Remote MCP**: Store `GITHUB_TOKEN` in the write-only vault (`credentials.create`) and attach it to `network.allowlist` + `https://api.githubcopilot.com/mcp/`.",
-      "4. **Step 4 — Wire the Web App**: Complete `server/auth.ts` and `server/chat.ts` (`GET /api/vault` + `POST /api/chat`) using `GeminiClient` and `AgentStreamMapper`.",
+      "This server is running in starter mode. Open [`/slides`](/slides) and copy the prompts from `PROMPTS.md` into your coding agent to build and connect the `pr-reviewer` Gemini Managed Agent.",
     ].join("\n");
 
     send("status", { text: "Starter mode" });
@@ -130,11 +109,7 @@ export function createChatRouter({
   });
 
   router.post("/chat/reset", (req: Request, res: Response) => {
-    const environmentId = req.session.chat?.environmentId;
     req.session.chat = { messages: [] };
-    if (environmentId) {
-      gemini.deleteEnvironment(environmentId).catch((err) => log.warn("sandbox delete failed", { error: describeError(err) }));
-    }
     res.status(204).end();
   });
 

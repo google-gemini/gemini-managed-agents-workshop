@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { memo, useEffect, useState } from "react";
 import type { Message, Step, StepKind } from "../types";
 import { CheckIcon, CopyIcon, ErrorIcon, ExpandIcon, RefreshIcon, StepKindIcon } from "./Icons";
@@ -19,10 +35,14 @@ function kindBadgeLabel(kind: StepKind): string {
       return "GitHub MCP";
     case "code":
       return "Sandbox";
+    case "tool":
+      return "Tool";
     case "search":
       return "Google Search";
     case "thought":
       return "Reasoning";
+    default:
+      return "Tool";
   }
 }
 
@@ -32,6 +52,7 @@ function stepsSummary(steps: Step[]): string {
   const parts: string[] = [];
   if (kinds.has("mcp")) parts.push("GitHub MCP");
   if (kinds.has("code")) parts.push("Linux Sandbox");
+  if (kinds.has("tool")) parts.push("Tools");
   if (kinds.has("search")) parts.push("Google Search");
   const count = `${steps.length} step${steps.length === 1 ? "" : "s"}`;
   if (parts.length === 0) return `Reasoning · ${count}`;
@@ -97,13 +118,11 @@ function StepsTrail({
   streaming,
   interrupted,
   liveStatus,
-  isTourTarget,
 }: {
   steps: Step[];
   streaming: boolean;
   interrupted: boolean;
   liveStatus: string | undefined;
-  isTourTarget: boolean;
 }) {
   const hasActionSteps = steps.some((s) => s.kind !== "thought");
   const [toggled, setToggled] = useState<boolean | null>(null);
@@ -113,10 +132,7 @@ function StepsTrail({
   const label = streaming ? `${liveStatus || "Thinking"}…` : stepsSummary(steps);
 
   return (
-    <div
-      className={`steps${expanded ? " is-open" : ""}`}
-      data-tour={isTourTarget ? "steps" : undefined}
-    >
+    <div className={`steps${expanded ? " is-open" : ""}`}>
       <button
         type="button"
         className="steps-toggle"
@@ -173,13 +189,11 @@ function CopyButton({ text }: { text: string }) {
 
 interface AssistantMessageProps {
   message: Message;
-  isTourTarget?: boolean;
   onRetry?: (() => void) | undefined;
 }
 
 export const AssistantMessage = memo(function AssistantMessage({
   message,
-  isTourTarget = false,
   onRetry,
 }: AssistantMessageProps) {
   const streaming = message.status === "streaming";
@@ -205,11 +219,10 @@ export const AssistantMessage = memo(function AssistantMessage({
             streaming={streaming}
             interrupted={interrupted}
             liveStatus={message.liveStatus}
-            isTourTarget={isTourTarget}
           />
         )}
         {hasText && (
-          <div data-tour={isTourTarget && !streaming && steps.length === 0 ? "steps" : undefined}>
+          <div>
             <MarkdownText text={streaming ? tidyStreamingMarkdown(message.text) : message.text} />
           </div>
         )}

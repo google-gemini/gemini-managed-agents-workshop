@@ -1,8 +1,23 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { randomBytes } from "node:crypto";
 
 export const AGENT_ID = "pr-reviewer";
 export const BASE_AGENT = "antigravity-preview-09-2026";
-/** Only per-session credentials with this prefix are created or swept by the janitor. */
 export const CREDENTIAL_PREFIX = "review-s-";
 
 export const GITHUB_CLONE_HOST = "github.com";
@@ -59,20 +74,11 @@ export function isLoopbackHostname(hostname: string): boolean {
 }
 
 function parseAgentModel(source: Record<string, string | undefined>): string {
-  const agentModel = readEnv(source, "GEMINI_AGENT_MODEL") ?? "gemini-3.8-flash";
+  const agentModel = readEnv(source, "GEMINI_AGENT_MODEL") ?? "gemini-4-carbon";
   if (!/^[a-z0-9][a-z0-9.-]{1,63}$/.test(agentModel)) {
     throw new ConfigError("GEMINI_AGENT_MODEL has an invalid format.");
   }
   return agentModel;
-}
-
-/** Strict loader for CLI scripts (`bun run agent:sync`) that require GEMINI_API_KEY. */
-export function loadGeminiConfig(envSource: Record<string, string | undefined> = process.env): GeminiConfig {
-  const geminiApiKey = readEnv(envSource, "GEMINI_API_KEY");
-  if (!geminiApiKey) {
-    throw new ConfigError("GEMINI_API_KEY is not set. Add your Gemini API key to .env (see .env.example).");
-  }
-  return { geminiApiKey, agentId: AGENT_ID, agentModel: parseAgentModel(envSource) };
 }
 
 function parsePort(raw: string): number {
@@ -132,7 +138,6 @@ export function loadConfig(envSource: Record<string, string | undefined> = proce
   }
   const githubToken = readEnv(envSource, "GITHUB_TOKEN");
 
-  // TODO(security): Optional MFA / organization-membership checks can be enforced at GitHub OAuth org level.
   const allowed = (readEnv(envSource, "ALLOWED_EMAILS") ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())

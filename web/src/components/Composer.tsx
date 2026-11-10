@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { useLayoutEffect, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { SendIcon, StopIcon } from "./Icons";
 
@@ -48,8 +64,8 @@ export function Composer({ value, onChange, onSend, onStop, busy, inputRef }: Co
           rows={1}
           value={value}
           maxLength={MAX_MESSAGE_CHARS}
-          placeholder="Ask RepoReview to inspect a GitHub PR, run tests in /workspace, or give a merge verdict…"
-          aria-label="Message RepoReview"
+          placeholder="Ask about any GitHub pull request…"
+          aria-label="Message PR Reviewer"
           autoComplete="off"
           spellCheck
           onChange={(e) => onChange(e.target.value)}
@@ -71,7 +87,7 @@ export function Composer({ value, onChange, onSend, onStop, busy, inputRef }: Co
             {value.length.toLocaleString()} / {MAX_MESSAGE_CHARS.toLocaleString()}
           </span>
         ) : (
-          "Powered by Gemini Managed Agents · Remote GitHub MCP + Isolated Linux Sandbox · Token stays in Vault."
+          "Gemini Managed Agents · GitHub MCP · Credentials API Vault"
         )}
       </p>
     </form>

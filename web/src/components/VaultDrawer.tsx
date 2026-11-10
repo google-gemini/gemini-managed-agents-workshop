@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchVault } from "../api";
 import type { VaultCredential, VaultStatus } from "../types";
@@ -29,12 +45,11 @@ function ago(iso: string | null, now: number): string {
 
 interface VaultDrawerProps {
   open: boolean;
-  tourActive: boolean;
   activeEnvOverride: string | null;
   onClose: () => void;
 }
 
-export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: VaultDrawerProps) {
+export function VaultDrawer({ open, activeEnvOverride, onClose }: VaultDrawerProps) {
   const [vault, setVault] = useState<VaultStatus | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -69,13 +84,13 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
   }, [open, load]);
 
   useEffect(() => {
-    if (!open || tourActive) return;
+    if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, tourActive, onClose]);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -85,7 +100,7 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
   const environmentId = vault?.sessionEnvironmentId || activeEnvOverride;
 
   return (
-    <div className="drawer-layer" role="dialog" aria-modal={!tourActive} aria-labelledby="vault-drawer-title">
+    <div className="drawer-layer" role="dialog" aria-modal={true} aria-labelledby="vault-drawer-title">
       <div className="drawer-backdrop" onClick={onClose} aria-hidden="true" />
       <aside className="drawer-panel">
         <header className="drawer-header">
@@ -93,7 +108,7 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
             <span className={`live-dot${!error ? " on" : ""}`} aria-hidden="true" />
             <div>
               <h2 id="vault-drawer-title" className="drawer-title">
-                Live Architecture &amp; Credential Vault
+                Agent &amp; Credentials
               </h2>
               <p className="drawer-subtitle">
                 {error ? "Could not reach /api/vault" : "Live state · polling GET /api/vault every 4s"}
@@ -125,7 +140,7 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
               </div>
               <div className="kv-item">
                 <span className="kv-label">agentModel</span>
-                <code className="kv-val">{vault?.agentModel || "gemini-3.8-flash"}</code>
+                <code className="kv-val">{vault?.agentModel || "gemini-4-carbon"}</code>
               </div>
               <div className="kv-item">
                 <span className="kv-label">agentHash</span>
@@ -150,7 +165,7 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
                 </div>
               ) : (
                 <p className="empty-inline">
-                  No skill files mounted yet. Run <code>bun run agent:sync</code> in Step 2.
+                  No skill files mounted yet. Register saved agent <code>pr-reviewer</code> in Step 2.
                 </p>
               )}
             </div>
