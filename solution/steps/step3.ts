@@ -1,26 +1,90 @@
-// Step 3 Reference: Store GITHUB_TOKEN in the write-only Gemini Credential Vault and attach it to
-// per-turn network.allowlist + GitHub Remote MCP (https://api.githubcopilot.com/mcp/).
+// Step 3 Reference: Authenticate via GitHub OAuth (PKCE), store the access token in the write-only
+// Gemini Credential Vault, and attach it to per-turn network.allowlist + Remote GitHub MCP.
 // Run with: bun run solution/steps/step3.ts [owner/repo]
 
+import { createHash, randomBytes } from "node:crypto";
 import { GoogleGenAI } from "@google/genai";
 
 const apiKey = process.env.GEMINI_API_KEY?.trim();
-const githubToken = process.env.GITHUB_TOKEN?.trim();
-if (!apiKey || !githubToken) {
-  console.error("Both GEMINI_API_KEY and GITHUB_TOKEN must be set in .env for Step 3.");
+if (!apiKey) {
+  console.error("GEMINI_API_KEY must be set in .env for Step 3.");
   process.exit(1);
 }
 
+async function acquireGitHubOAuthToken(): Promise<string> {
+  const clientId = process.env.GITHUB_CLIENT_ID?.trim();
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    if (process.env.GITHUB_TOKEN?.trim()) return process.env.GITHUB_TOKEN.trim();
+    console.error("Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in .env (callback: http://localhost:3000/auth/github/callback).");
+    process.exit(1);
+  }
+
+  const port = Number(process.env.PORT ?? "3000");
+  const redirectUri = `http://localhost:${port}/auth/github/callback`;
+  const state = randomBytes(16).toString("base64url");
+  const verifier = randomBytes(48).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+
+  const authUrl = new URL("https://github.com/login/oauth/authorize");
+  authUrl.searchParams.set("client_id", clientId);
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("scope", "read:user user:email repo");
+  authUrl.searchParams.set("state", state);
+  authUrl.searchParams.set("code_challenge", challenge);
+  authUrl.searchParams.set("code_challenge_method", "S256");
+
+  console.log(`\nOpen this URL in your browser to authorize GitHub OAuth:\n  ${authUrl.toString()}\n`);
+
+  const code = await new Promise<string>((resolve, reject) => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port,
+      fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname !== "/auth/github/callback") return new Response("Not Found", { status: 404 });
+        const returnedCode = url.searchParams.get("code");
+        const returnedState = url.searchParams.get("state");
+        setTimeout(() => server.stop(), 50);
+        if (!returnedCode || returnedState !== state) {
+          reject(new Error("GitHub OAuth state mismatch or authorization denied."));
+          return new Response("Authorization failed. Return to your terminal.", { status: 400 });
+        }
+        resolve(returnedCode);
+        return new Response("GitHub OAuth complete! You can close this tab and return to your terminal.");
+      },
+    });
+  });
+
+  const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri,
+      code_verifier: verifier,
+    }),
+  });
+  const tokenJson = (await tokenRes.json()) as { access_token?: string; error_description?: string };
+  if (!tokenJson.access_token) {
+    throw new Error(`OAuth token exchange failed: ${tokenJson.error_description ?? tokenRes.status}`);
+  }
+  return tokenJson.access_token;
+}
+
 const repo = process.argv[2] ?? "google/budoux";
-const credentialId = "workshop-gh-pat";
+const credentialId = "workshop-gh-oauth";
 const client = new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
 
-console.log(`Step 3: Storing GITHUB_TOKEN in Gemini Credential Vault as "${credentialId}" ...`);
+const githubAccessToken = await acquireGitHubOAuthToken();
+console.log(`Step 3: Storing GitHub OAuth token in Gemini Credential Vault as "${credentialId}" ...`);
 await client.credentials.delete(credentialId).catch(() => undefined);
 const cred = await client.credentials.create({
   id: credentialId,
   type: "bearer_token",
-  token: githubToken,
+  token: githubAccessToken,
 });
 console.log("Vault response (write-only, secret never returned):", {
   id: cred.id,

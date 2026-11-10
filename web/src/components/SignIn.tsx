@@ -23,9 +23,9 @@ const NOTICES: Record<string, string> = {
   gemini_unconfigured:
     "GEMINI_API_KEY isn't set yet. Add GEMINI_API_KEY to .env and restart the workshop server.",
   github_unconfigured:
-    "GitHub sign-in isn't configured yet. Add GITHUB_TOKEN (or GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET) to .env and restart.",
+    "GitHub OAuth isn't configured yet. Add GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to .env and restart.",
   unconfigured:
-    "GitHub sign-in isn't configured yet. Add GITHUB_TOKEN (or GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET) to .env and restart.",
+    "GitHub OAuth isn't configured yet. Add GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to .env and restart.",
   pat_invalid: "The configured GitHub token was rejected by GitHub. Verify the token and restart the server.",
   starter_todo:
     "Starter step incomplete — open Workshop Slides to wire up the Gemini Credential Vault in server/.",
@@ -51,16 +51,13 @@ const ASSURANCES = [
 ] as const;
 
 function authStatus(meta: SignedOutMeta | null): { label: string; ready: boolean } {
-  if (meta?.hasGithubOAuth) {
-    return { label: "OAuth ready", ready: true };
-  }
-  if (meta?.hasGithubPat) {
-    return { label: "GitHub token ready", ready: true };
+  if (meta?.hasGithubOAuth || meta?.hasGithubPat) {
+    return { label: "GitHub OAuth ready", ready: true };
   }
   if (meta && meta.hasGithubOAuth === false && meta.hasGithubPat === false) {
-    return { label: "Auth not configured", ready: false };
+    return { label: "OAuth not configured", ready: false };
   }
-  return { label: "GitHub auth ready", ready: true };
+  return { label: "GitHub OAuth ready", ready: true };
 }
 
 interface SignInProps {

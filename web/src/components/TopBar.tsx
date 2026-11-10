@@ -88,7 +88,7 @@ export function TopBar({
   onSignOut,
 }: TopBarProps) {
   const badge = modeBadge(me.workshopMode);
-  const authLabel = me.authMode === "oauth" ? "OAuth" : "PAT → Vault";
+  const authLabel = "OAuth → Vault";
   const sessionTitle = me.email
     ? `Signed in as @${me.login} (${maskEmail(me.email)}) · Cookie holds vault reference ID only`
     : `Signed in as @${me.login} · Cookie holds vault reference ID only`;

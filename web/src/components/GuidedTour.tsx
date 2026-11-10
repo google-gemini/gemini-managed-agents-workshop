@@ -33,7 +33,7 @@ export const TOUR_STOPS: readonly TourStop[] = [
     selector: '[data-tour="session"]',
     eyebrow: "Zero-Secret Session",
     title: "Your browser cookie holds zero tokens",
-    body: "GitHub OAuth or .env GITHUB_TOKEN handed your token directly to Gemini's Credentials API on sign-in. Your session cookie only stores a vault reference ID.",
+    body: "GitHub OAuth handed your user access token directly to Gemini's Credentials API on sign-in. Your session cookie only stores a vault reference ID.",
   },
   {
     id: "vault",
