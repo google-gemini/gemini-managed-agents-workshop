@@ -749,19 +749,20 @@ pre {
   position: relative;
   z-index: 10;
   flex: none;
-  height: 64px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 16px 0 20px;
-  border-bottom: 1px solid var(--outline-2);
+  padding: 0 18px 0 20px;
+  border-bottom: 1px solid transparent;
   background: var(--bg);
-  transition: box-shadow 0.2s var(--ease);
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
 
 .topbar.is-elevated {
-  box-shadow: 0 1px 4px rgba(60, 64, 67, 0.08);
+  border-bottom-color: var(--outline-2);
+  box-shadow: 0 1px 4px rgba(60, 64, 67, 0.06);
 }
 
 .topbar-left,
@@ -772,47 +773,43 @@ pre {
   min-width: 0;
 }
 
-.session-pill {
+.agent-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 10px 0 6px;
-  margin-left: 4px;
-  border: 1px solid var(--outline-2);
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
   border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: background-color 0.18s var(--ease), color 0.18s var(--ease);
+}
+
+.agent-btn:hover,
+.agent-btn.is-active {
   background: var(--surface);
   color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-  min-width: 0;
 }
 
-.session-gh {
-  color: var(--text-2);
-  flex: none;
-}
-
-.session-login {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 150px;
-}
-
-.session-auth-badge {
+.user-profile {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: #fff;
-  color: var(--success);
-  font-size: 11.5px;
-  font-weight: 600;
+  gap: 9px;
+  min-width: 0;
+  padding: 4px 6px;
+}
+
+.user-name {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
 }
 
 .avatar {
@@ -822,10 +819,10 @@ pre {
   object-fit: cover;
 }
 
-.avatar-22 {
-  width: 22px;
-  height: 22px;
-  font-size: 11px;
+.avatar-24 {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
 }
 
 .avatar-32 {
@@ -843,66 +840,15 @@ pre {
   line-height: 1;
 }
 
-.topbar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.logout-btn {
+  width: 36px;
   height: 36px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
   color: var(--text-2);
-  font-size: 13.5px;
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: background-color 0.2s var(--ease), color 0.2s var(--ease);
 }
 
-.topbar-btn:hover:not(:disabled) {
+.logout-btn:hover {
   background: var(--surface);
   color: var(--text);
-}
-
-.topbar-btn:disabled {
-  opacity: 0.4;
-}
-
-.topbar-signout {
-  border: 1px solid var(--outline-2);
-  background: #fff;
-}
-
-.topbar-signout:hover:not(:disabled) {
-  background: var(--error-soft);
-  border-color: #f4c7c3;
-  color: var(--error);
-}
-
-/* Starter mode banner */
-
-.starter-banner {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--amber-soft);
-  border-bottom: 1px solid #f5d8a8;
-  color: var(--amber);
-  font-size: 13.5px;
-  text-align: center;
-}
-
-.starter-banner a {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--amber);
-  font-weight: 600;
-  text-decoration: underline;
 }
 
 /* ---------- Scroller & Thread ---------- */
@@ -1627,13 +1573,13 @@ pre {
   inset: 0;
   z-index: 40;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .drawer-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.28);
+  background: rgba(15, 23, 42, 0.24);
   animation: fade-in 0.2s var(--ease);
 }
 
@@ -1645,9 +1591,9 @@ pre {
   display: flex;
   flex-direction: column;
   background: var(--bg);
-  border-left: 1px solid var(--outline-2);
-  box-shadow: -12px 0 36px rgba(31, 31, 31, 0.16);
-  animation: slide-left 0.24s var(--ease);
+  border-right: 1px solid var(--outline-2);
+  box-shadow: 12px 0 36px rgba(31, 31, 31, 0.14);
+  animation: slide-right 0.22s var(--ease);
 }
 
 .drawer-header {
@@ -2274,10 +2220,10 @@ pre {
   }
 }
 
-@keyframes slide-left {
+@keyframes slide-right {
   from {
     opacity: 0.6;
-    transform: translateX(28px);
+    transform: translateX(-24px);
   }
   to {
     opacity: 1;

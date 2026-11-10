@@ -97,13 +97,11 @@ function StepsTrail({
   streaming,
   interrupted,
   liveStatus,
-  isTourTarget,
 }: {
   steps: Step[];
   streaming: boolean;
   interrupted: boolean;
   liveStatus: string | undefined;
-  isTourTarget: boolean;
 }) {
   const hasActionSteps = steps.some((s) => s.kind !== "thought");
   const [toggled, setToggled] = useState<boolean | null>(null);
@@ -113,10 +111,7 @@ function StepsTrail({
   const label = streaming ? `${liveStatus || "Thinking"}…` : stepsSummary(steps);
 
   return (
-    <div
-      className={`steps${expanded ? " is-open" : ""}`}
-      data-tour={isTourTarget ? "steps" : undefined}
-    >
+    <div className={`steps${expanded ? " is-open" : ""}`}>
       <button
         type="button"
         className="steps-toggle"
@@ -173,13 +168,11 @@ function CopyButton({ text }: { text: string }) {
 
 interface AssistantMessageProps {
   message: Message;
-  isTourTarget?: boolean;
   onRetry?: (() => void) | undefined;
 }
 
 export const AssistantMessage = memo(function AssistantMessage({
   message,
-  isTourTarget = false,
   onRetry,
 }: AssistantMessageProps) {
   const streaming = message.status === "streaming";
@@ -205,11 +198,10 @@ export const AssistantMessage = memo(function AssistantMessage({
             streaming={streaming}
             interrupted={interrupted}
             liveStatus={message.liveStatus}
-            isTourTarget={isTourTarget}
           />
         )}
         {hasText && (
-          <div data-tour={isTourTarget && !streaming && steps.length === 0 ? "steps" : undefined}>
+          <div>
             <MarkdownText text={streaming ? tidyStreamingMarkdown(message.text) : message.text} />
           </div>
         )}

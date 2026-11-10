@@ -29,12 +29,11 @@ function ago(iso: string | null, now: number): string {
 
 interface VaultDrawerProps {
   open: boolean;
-  tourActive: boolean;
   activeEnvOverride: string | null;
   onClose: () => void;
 }
 
-export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: VaultDrawerProps) {
+export function VaultDrawer({ open, activeEnvOverride, onClose }: VaultDrawerProps) {
   const [vault, setVault] = useState<VaultStatus | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -69,13 +68,13 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
   }, [open, load]);
 
   useEffect(() => {
-    if (!open || tourActive) return;
+    if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, tourActive, onClose]);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -85,7 +84,7 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
   const environmentId = vault?.sessionEnvironmentId || activeEnvOverride;
 
   return (
-    <div className="drawer-layer" role="dialog" aria-modal={!tourActive} aria-labelledby="vault-drawer-title">
+    <div className="drawer-layer" role="dialog" aria-modal={true} aria-labelledby="vault-drawer-title">
       <div className="drawer-backdrop" onClick={onClose} aria-hidden="true" />
       <aside className="drawer-panel">
         <header className="drawer-header">
@@ -93,7 +92,7 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
             <span className={`live-dot${!error ? " on" : ""}`} aria-hidden="true" />
             <div>
               <h2 id="vault-drawer-title" className="drawer-title">
-                Live Architecture &amp; Credential Vault
+                Agent &amp; Credentials
               </h2>
               <p className="drawer-subtitle">
                 {error ? "Could not reach /api/vault" : "Live state · polling GET /api/vault every 4s"}

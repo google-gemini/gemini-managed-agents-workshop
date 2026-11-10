@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { fetchMe, HttpError, resetChat, signOut, streamChat } from "../api";
+import { fetchMe, HttpError, signOut, streamChat } from "../api";
 import type { ChatEvent, Me, Message, MessageStatus, Step } from "../types";
 import { Composer } from "./Composer";
-import { GuidedTour, hasSeenTour, markTourSeen, TOUR_STOPS } from "./GuidedTour";
 import {
   ExpandIcon,
-  ExternalIcon,
   GitHubIcon,
   MergeIcon,
   ShieldIcon,
-  SlidesIcon,
   TerminalIcon,
 } from "./Icons";
 import { AssistantMessage, UserMessage } from "./MessageView";
@@ -118,7 +115,7 @@ function Welcome({
     <div className="welcome">
       <h1 className="welcome-title">Ready to review, {name}</h1>
       <p className="welcome-sub">Pick a repository prompt or paste any GitHub PR</p>
-      <div className="suggestions" data-tour="steps">
+      <div className="suggestions">
         {STAGE_SUGGESTIONS.map(({ tag, text, Icon }) => (
           <button key={text} type="button" className="suggestion" disabled={disabled} onClick={() => onPick(text)}>
             <div className="suggestion-top">
@@ -151,13 +148,6 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
   const [vaultOpen, setVaultOpen] = useState(false);
   const [activeEnvId, setActiveEnvId] = useState<string | null>(null);
 
-  // Auto-open the 4-stop spotlight tour once on first sign-in in solution or configured mode.
-  const [tourActive, setTourActive] = useState<boolean>(() => {
-    const autoEligible = me.workshopMode === "solution" || me.workshopMode === "configured";
-    return autoEligible && !hasSeenTour();
-  });
-  const [tourStep, setTourStep] = useState(0);
-
   const csrfRef = useRef(me.csrfToken);
   const busyRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -175,9 +165,9 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
   }, [onSessionExpired]);
 
   useEffect(() => {
-    if (!tourActive) focusIfDesktop(inputRef.current);
+    focusIfDesktop(inputRef.current);
     return () => abortRef.current?.abort();
-  }, [tourActive]);
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -189,29 +179,6 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
     const el = scrollRef.current;
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
-
-  const handleTourStepChange = useCallback((nextIndex: number) => {
-    const clamped = Math.max(0, Math.min(TOUR_STOPS.length - 1, nextIndex));
-    const nextStop = TOUR_STOPS[clamped];
-    setTourStep(clamped);
-    // Automatically open VaultDrawer on Stop 2 ("vault") and close it when leaving Stop 2.
-    setVaultOpen(nextStop?.id === "vault");
-  }, []);
-
-  const handleStartTour = useCallback(() => {
-    setVaultOpen(false);
-    setTourStep(0);
-    setTourActive(true);
-  }, []);
-
-  const handleCloseTour = useCallback(() => {
-    markTourSeen();
-    setTourActive(false);
-    if (TOUR_STOPS[tourStep]?.id === "vault") {
-      setVaultOpen(false);
-    }
-    focusIfDesktop(inputRef.current);
-  }, [tourStep]);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -313,44 +280,16 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
     if (lastUser) void send(lastUser.text);
   }, [send]);
 
-  const newChat = useCallback(async () => {
-    if (busyRef.current) return;
-    try {
-      await withCsrf(csrfRef, (token) => resetChat(token));
-    } catch (err) {
-      if (err instanceof HttpError && err.status === 401) {
-        expiredRef.current();
-        return;
-      }
-      setNotice(
-        err instanceof HttpError && err.status === 409
-          ? "Wait for the active review to finish first."
-          : "Couldn't reset the sandbox. Please try again.",
-      );
-      return;
-    }
-    pinnedRef.current = true;
-    setAtBottom(true);
-    setElevated(false);
-    setMessages([]);
-    setActiveEnvId(null);
-    setNotice("Conversation and sandbox reset");
-    setAnnouncement("Conversation and sandbox reset");
-    focusIfDesktop(inputRef.current);
-  }, []);
-
   const handleSignOut = useCallback(() => {
     abortRef.current?.abort();
     setMessages([]);
     setDraft("");
     setActiveEnvId(null);
     setVaultOpen(false);
-    setTourActive(false);
     void signOut(csrfRef.current);
   }, []);
 
   const lastIndex = messages.length - 1;
-  const lastAssistantIndex = messages.findLastIndex((m) => m.role === "assistant");
   const displayName = me.givenName || me.name || me.login;
 
   return (
@@ -358,26 +297,10 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
       <TopBar
         me={me}
         elevated={elevated}
-        busy={busy}
         vaultOpen={vaultOpen}
         onOpenVault={() => setVaultOpen((v) => !v)}
-        onStartTour={handleStartTour}
-        onNewChat={() => void newChat()}
         onSignOut={handleSignOut}
       />
-
-      {me.workshopMode === "starter" && (
-        <div className="starter-banner" role="region" aria-label="Workshop starter status">
-          <SlidesIcon size={16} />
-          <span>
-            Starter workspace running — follow Steps 1–4 in{" "}
-            <a href="/slides" target="_blank" rel="noopener noreferrer">
-              /slides <ExternalIcon size={12} />
-            </a>{" "}
-            to connect your saved agent, Vault credential, and GitHub MCP.
-          </span>
-        </div>
-      )}
 
       <main className="chat-main">
         <div ref={scrollRef} className="scroller" onScroll={onScroll}>
@@ -392,7 +315,6 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
                   <AssistantMessage
                     key={m.id}
                     message={m}
-                    isTourTarget={i === lastAssistantIndex}
                     onRetry={i === lastIndex && !busy && isRetryable(m) ? retryLast : undefined}
                   />
                 ),
@@ -425,16 +347,8 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
 
       <VaultDrawer
         open={vaultOpen}
-        tourActive={tourActive}
         activeEnvOverride={activeEnvId}
         onClose={() => setVaultOpen(false)}
-      />
-
-      <GuidedTour
-        active={tourActive}
-        stepIndex={tourStep}
-        onStepChange={handleTourStepChange}
-        onClose={handleCloseTour}
       />
 
       <div className="sr-only" aria-live="polite">
