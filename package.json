@@ -9,6 +9,7 @@
     "dev": "bun run scripts/dev.ts",
     "build": "bunx --bun vite build",
     "start": "bunx --bun vite build && bun --env-file=.env server/index.ts",
+    "agent:sync": "bun --env-file=.env scripts/sync-agent.ts",
     "typecheck": "bunx tsc -p tsconfig.json && bunx tsc -p web/tsconfig.json",
     "test": "bun test"
   },

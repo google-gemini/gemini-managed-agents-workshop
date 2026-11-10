@@ -18,6 +18,7 @@ import { randomBytes } from "node:crypto";
 
 export const AGENT_ID = "pr-reviewer";
 export const BASE_AGENT = "antigravity-preview-09-2026";
+/** Only per-session credentials with this prefix are created or swept by the janitor. */
 export const CREDENTIAL_PREFIX = "review-s-";
 
 export const GITHUB_CLONE_HOST = "github.com";
@@ -81,6 +82,15 @@ function parseAgentModel(source: Record<string, string | undefined>): string {
   return agentModel;
 }
 
+/** Strict loader for CLI scripts (`bun run agent:sync`) that require GEMINI_API_KEY. */
+export function loadGeminiConfig(envSource: Record<string, string | undefined> = process.env): GeminiConfig {
+  const geminiApiKey = readEnv(envSource, "GEMINI_API_KEY");
+  if (!geminiApiKey) {
+    throw new ConfigError("GEMINI_API_KEY is not set. Add your Gemini API key to .env (see .env.example).");
+  }
+  return { geminiApiKey, agentId: AGENT_ID, agentModel: parseAgentModel(envSource) };
+}
+
 function parsePort(raw: string): number {
   const port = Number(raw);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -138,6 +148,7 @@ export function loadConfig(envSource: Record<string, string | undefined> = proce
   }
   const githubToken = readEnv(envSource, "GITHUB_TOKEN");
 
+  // TODO(security): Optional MFA / organization-membership checks can be enforced at GitHub OAuth org level.
   const allowed = (readEnv(envSource, "ALLOWED_EMAILS") ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())

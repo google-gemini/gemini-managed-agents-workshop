@@ -71,3 +71,9 @@ export interface RemoteResources {
   credentialId?: string | undefined;
   environmentId?: string | undefined;
 }
+
+export interface AgentSyncStatus {
+  synced: boolean;
+  hash: string | null;
+  skillFiles: string[];
+}

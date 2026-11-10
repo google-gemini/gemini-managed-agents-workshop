@@ -27,7 +27,7 @@ export function securityHeaders(isHttps: boolean): RequestHandler[] {
   const directives: Record<string, string[]> = {
     "default-src": ["'self'"],
     "script-src": ["'self'"],
-    // TODO(security): Vite CSS bundles load from 'self'; style-src allows React style={{...}} attributes while keeping script-src strictly 'self'.
+    // TODO(security): Vite CSS bundles load from 'self'; style-src-attr 'unsafe-inline' permits React style={{...}} attributes while keeping script-src strictly 'self'.
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "https://avatars.githubusercontent.com"],
     "font-src": ["'self'", "data:"],

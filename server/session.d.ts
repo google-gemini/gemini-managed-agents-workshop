@@ -19,7 +19,7 @@ import type { ChatState, PendingOAuth, SessionUser } from "./types.ts";
 
 declare module "express-session" {
   interface SessionData {
-    /** Present only after a verified GitHub OAuth, PAT, or starter preview sign-in. */
+    /** Present only after a verified GitHub OAuth or PAT sign-in. */
     user?: SessionUser;
     /** Sign-in timestamp (ms) — used for enforcing the absolute session lifetime. */
     createdAt?: number;
