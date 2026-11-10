@@ -1185,7 +1185,8 @@ pre {
   color: var(--purple);
 }
 
-.badge-code {
+.badge-code,
+.badge-tool {
   background: var(--success-soft);
   color: var(--on-success-soft);
 }

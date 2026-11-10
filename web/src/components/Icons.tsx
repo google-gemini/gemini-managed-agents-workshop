@@ -105,9 +105,13 @@ export function StepKindIcon({ kind, size = 14 }: { kind: StepKind; size?: numbe
       return <GitHubIcon size={size} />;
     case "code":
       return <TerminalIcon size={size} />;
+    case "tool":
+      return <CodeIcon size={size} />;
     case "search":
       return <SearchIcon size={size} />;
     case "thought":
       return <LightbulbIcon size={size} />;
+    default:
+      return <CodeIcon size={size} />;
   }
 }

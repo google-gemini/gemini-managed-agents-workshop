@@ -6,12 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun run scripts/dev.ts",
-    "solution": "bun run scripts/dev.ts --solution",
     "build": "bunx --bun vite build",
     "start": "bunx --bun vite build && bun --env-file=.env server/index.ts",
-    "start:solution": "bunx --bun vite build && bun --env-file=.env solution/server/index.ts",
-    "agent:sync": "bun --env-file=.env scripts/sync-agent.ts",
-    "solution:sync": "bun --env-file=.env solution/scripts/sync-agent.ts",
     "typecheck": "bunx tsc -p tsconfig.json && bunx tsc -p web/tsconfig.json",
     "test": "bun test"
   },

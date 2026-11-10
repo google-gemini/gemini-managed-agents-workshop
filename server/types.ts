@@ -15,7 +15,7 @@ export interface SessionUser {
   picture: string | null;
 }
 
-export type StepKind = "mcp" | "code" | "search" | "thought";
+export type StepKind = "mcp" | "code" | "tool" | "search" | "thought";
 export type StepState = "running" | "done" | "error";
 
 export interface StoredStep {
@@ -54,10 +54,4 @@ export interface PendingOAuth {
 export interface RemoteResources {
   credentialId?: string | undefined;
   environmentId?: string | undefined;
-}
-
-export interface AgentSyncStatus {
-  synced: boolean;
-  hash: string | null;
-  skillFiles: string[];
 }

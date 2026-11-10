@@ -1,15 +1,12 @@
-// Express application wiring for the Starter/Workshop server (`server/`).
+// Express application shell for the Workshop starter server (`server/`).
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { Router, type ErrorRequestHandler, type RequestHandler } from "express";
 import session, { type Store } from "express-session";
-import { DEFAULT_AGENT_DIR } from "./agentDefinition.ts";
 import { createAuth } from "./auth.ts";
 import { createChatRouter, WORKSHOP_MODE } from "./chat.ts";
 import { ABSOLUTE_TIMEOUT_MS, IDLE_TIMEOUT_MS, type AppConfig } from "./config.ts";
-import type { GeminiClient } from "./gemini.ts";
-import { cleanupRemoteResources } from "./janitor.ts";
 import { describeError, log } from "./log.ts";
 import {
   absoluteTimeout,
@@ -26,15 +23,12 @@ import {
   securityHeaders,
   slidesCsp,
 } from "./security.ts";
-import type { AgentSyncStatus } from "./types.ts";
 
 const DIST_DIR = fileURLToPath(new URL("../dist/web/", import.meta.url));
 const INDEX_HTML = path.join(DIST_DIR, "index.html");
 const SLIDES_HTML = fileURLToPath(new URL("../slides/index.html", import.meta.url));
 
 export function sessionCookieName(cfg: AppConfig): string {
-  // TODO(security): __Host- requires Secure + HTTPS. On plain-http localhost we use an unprefixed
-  // HttpOnly, SameSite=Lax cookie; HTTPS deployments automatically switch to __Host-review.sid.
   return cfg.isHttps ? "__Host-review.sid" : "review.sid";
 }
 
@@ -49,26 +43,14 @@ const requestLogger: RequestHandler = (req, res, next) => {
 
 export interface CreateAppOptions {
   cfg: AppConfig;
-  gemini: GeminiClient;
   store: Store;
-  agentDir?: string;
-  agentStatus?: AgentSyncStatus;
-  fetchImpl?: typeof fetch;
 }
 
-export function createApp({
-  cfg,
-  gemini,
-  store,
-  agentDir = DEFAULT_AGENT_DIR,
-  agentStatus = { synced: false, hash: null, skillFiles: [] },
-  fetchImpl,
-}: CreateAppOptions) {
+export function createApp({ cfg, store }: CreateAppOptions) {
   const app = express();
   const cookieName = sessionCookieName(cfg);
   app.disable("x-powered-by");
   app.set("query parser", "simple");
-  // TODO(security): when deployed behind a TLS-terminating reverse proxy, match its hop count.
   if (cfg.isHttps) app.set("trust proxy", "loopback");
 
   app.use(requestLogger);
@@ -88,7 +70,6 @@ export function createApp({
     res.redirect(302, "/favicon.svg");
   });
 
-  // Serve self-contained workshop presentation deck at /slides and /workshop with route-scoped CSP.
   const serveSlides: RequestHandler = (_req, res) => {
     res.sendFile(SLIDES_HTML, { cacheControl: false, lastModified: false }, (err) => {
       if (err && !res.headersSent) {
@@ -114,11 +95,7 @@ export function createApp({
       cookie: { httpOnly: true, sameSite: "lax", secure: cfg.isHttps, maxAge: IDLE_TIMEOUT_MS, path: "/" },
     }),
   );
-  app.use(
-    absoluteTimeout(ABSOLUTE_TIMEOUT_MS, (resources) => {
-      void cleanupRemoteResources(gemini, resources);
-    }),
-  );
+  app.use(absoluteTimeout(ABSOLUTE_TIMEOUT_MS, () => undefined));
 
   const serveSpa: RequestHandler = (_req, res) => {
     res.sendFile(INDEX_HTML, { cacheControl: false, lastModified: false }, (err) => {
@@ -129,7 +106,7 @@ export function createApp({
   };
   app.get("/", noStore, serveSpa);
 
-  const auth = createAuth({ cfg, gemini, cookieName, ...(fetchImpl ? { fetchImpl } : {}) });
+  const auth = createAuth({ cfg, cookieName });
   app.use("/auth", noStore, authLimiter, auth.router);
 
   const api = Router();
@@ -168,7 +145,7 @@ export function createApp({
   api.post("/auth/logout", auth.logout);
   api.use(requireAuth);
 
-  api.use(createChatRouter({ cfg, gemini, agentDir, agentStatus }));
+  api.use(createChatRouter({ cfg }));
 
   app.use(
     "/api",

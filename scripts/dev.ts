@@ -1,12 +1,11 @@
-// Development runner: builds & watches `web/` with Vite and runs `server/index.ts` (or `solution/server/index.ts` with --solution).
+// Development runner: builds & watches `web/` with Vite and runs `server/index.ts`.
 
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = fileURLToPath(new URL("../", import.meta.url));
-const isSolution = process.argv.includes("--solution");
-const serverEntry = isSolution ? "solution/server/index.ts" : "server/index.ts";
+const serverEntry = "server/index.ts";
 const hasEnvFile = existsSync(path.join(ROOT_DIR, ".env"));
 const hasWebEntry = existsSync(path.join(ROOT_DIR, "web", "index.html"));
 
@@ -55,7 +54,7 @@ if (!hasEnvFile) {
 }
 
 const serverArgs = ["bun", "--watch", ...(hasEnvFile ? ["--env-file=.env"] : []), serverEntry];
-console.log(`[dev] Starting ${isSolution ? "solution" : "starter"} server (${serverEntry}) ...`);
+console.log(`[dev] Starting server (${serverEntry}) ...`);
 
 const serverProc = Bun.spawn(serverArgs, {
   cwd: ROOT_DIR,

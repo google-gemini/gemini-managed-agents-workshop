@@ -19,10 +19,14 @@ function kindBadgeLabel(kind: StepKind): string {
       return "GitHub MCP";
     case "code":
       return "Sandbox";
+    case "tool":
+      return "Tool";
     case "search":
       return "Google Search";
     case "thought":
       return "Reasoning";
+    default:
+      return "Tool";
   }
 }
 
@@ -32,6 +36,7 @@ function stepsSummary(steps: Step[]): string {
   const parts: string[] = [];
   if (kinds.has("mcp")) parts.push("GitHub MCP");
   if (kinds.has("code")) parts.push("Linux Sandbox");
+  if (kinds.has("tool")) parts.push("Tools");
   if (kinds.has("search")) parts.push("Google Search");
   const count = `${steps.length} step${steps.length === 1 ? "" : "s"}`;
   if (parts.length === 0) return `Reasoning · ${count}`;

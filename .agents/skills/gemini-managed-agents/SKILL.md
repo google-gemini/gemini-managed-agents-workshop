@@ -15,7 +15,7 @@ description: Build and connect Gemini Managed Agents using the Interactions API,
 - Models (set via `agent_config` — respect `process.env.GEMINI_AGENT_MODEL` when set):
   - `gemini-4-carbon` (primary coding and PR review model)
   - `gemini-3.8-flash` (fast high-throughput agentic tool use)
-- SDK: `@google/genai` `3.0.0` (pre-installed in `node_modules`) with `apiVersion: "v1beta"`, or the thin REST wrapper `GeminiClient` in `./server/gemini.ts`
+- SDK: `@google/genai` `3.0.0` (pre-installed in `node_modules`) initialized with `apiVersion: "v1beta"`
 - REST Base: `https://generativelanguage.googleapis.com/v1beta` with header `x-goog-api-key: $GEMINI_API_KEY`
 
 ## 1. Run a Managed Agent (`interactions.create`)
@@ -50,12 +50,19 @@ console.log(turn2.output_text);
 ## 2. Create a Saved Agent with a Review Principles Skill (`agents.create`)
 
 - Agent `id`: lowercase letters, digits, hyphens/underscores (for this workshop, use `"pr-reviewer"`); NEVER start with `gemini-` or `google-`.
-- There is no update endpoint: to update an agent, call `await client.agents.delete("pr-reviewer")` (positional `id: string` argument in `@google/genai@3.0.0`, or `DELETE /v1beta/agents/{id}`) then `create` again.
+- Check an existing agent with `await client.agents.get("pr-reviewer")`. There is no update/patch endpoint: to update an agent, call `await client.agents.delete("pr-reviewer").catch(() => undefined)` (positional `id: string` argument in `@google/genai@3.0.0`, or `DELETE /v1beta/agents/{id}`) then `client.agents.create(...)` again.
 - Mount `AGENTS.md` (always loaded guardrails) and `skills/pr-review/SKILL.md` (engineering code review principles, loaded progressively when reviewing PRs) at `/.agents/...` via `base_environment.sources` (`type: "inline"`, max 1 MB per file, 2 MB total).
 - Omit `url_context` from `tools` when handling untrusted repo/PR text so prompt injection cannot exfiltrate data via arbitrary URLs.
 - Include `github.com`, `*.githubusercontent.com`, and `api.github.com` in `base_environment.network.allowlist`.
 
 ```typescript
+import { readFile } from "node:fs/promises";
+import { GoogleGenAI } from "@google/genai";
+
+const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: "v1beta" });
+const agentsMd = await readFile("agent/AGENTS.md", "utf8");
+const skillMd = await readFile("agent/skills/pr-review/SKILL.md", "utf8");
+
 await client.agents.delete("pr-reviewer").catch(() => undefined);
 
 await client.agents.create({
@@ -83,11 +90,9 @@ await client.agents.create({
 });
 ```
 
-> Tip: `./server/agentDefinition.ts` is already pre-built with `buildAgentDefinition(cfg)`, `inspectAgentFiles(dir)`, and `syncAgent(gemini, def)` — reuse it from `scripts/sync-agent.ts` rather than removing its exports!
-
 ## 3. Credentials API (`credentials.create` / `list` / `delete`)
 
-Secrets are write-only in the Gemini credential vault and never returned by create/get/list or exposed inside the container. An egress proxy injects them on the wire only for matching `network.allowlist` domains or `mcp_server` tools. Both GitHub PATs (`github_pat_...` / `ghp_...`) and GitHub OAuth user access tokens (`gho_...`) work as `type: "bearer_token"` with Remote GitHub MCP.
+Secrets are write-only in the Gemini credential vault and never returned by `create`, `get`, or `list`, or exposed inside the sandbox container (`os.environ` / `/proc`). An egress proxy injects them on the wire only for matching `network.allowlist` domains or `mcp_server` tools. Both GitHub OAuth user access tokens (`gho_...`) and GitHub PATs (`github_pat_...` / `ghp_...`) work as `type: "bearer_token"` with Remote GitHub MCP.
 
 Three credential types:
 1. `bearer_token`: `{ id, type: "bearer_token", token, header_name?, prefix? }` (GitHub OAuth access tokens, PATs, and remote MCP servers).
@@ -116,55 +121,55 @@ Passing `environment.network` on `interactions.create` replaces the base network
 ```typescript
 // Note: in @google/genai@3.0.0, spread `{ credential: credentialId } as Record<string, unknown>` on mcp_server
 // because the REST endpoint accepts `credential` on mcp_server before the generated TS interface added it.
-const stream = await client.interactions.create({
-  agent: "pr-reviewer",
-  input: "Use GitHub MCP to inspect the newest open PR on google/budoux and review it using the pr-review skill.",
-  ...(prevId ? { previous_interaction_id: prevId } : {}),
-  environment: {
-    type: "remote",
-    ...(envId ? { environment_id: envId } : {}),
-    network: {
-      allowlist: [
-        { domain: "github.com", credential: credentialId },
-        { domain: "*.githubusercontent.com" },
-        { domain: "api.github.com", credential: credentialId },
-        { domain: "api.githubcopilot.com", credential: credentialId },
-      ],
+const stream = await client.interactions.create(
+  {
+    agent: "pr-reviewer",
+    input: "Use GitHub MCP to inspect the newest open PR on google/budoux and review it using the pr-review skill.",
+    ...(prevId ? { previous_interaction_id: prevId } : {}),
+    environment: {
+      type: "remote",
+      ...(envId ? { environment_id: envId } : {}),
+      network: {
+        allowlist: [
+          { domain: "github.com", credential: credentialId },
+          { domain: "*.githubusercontent.com" },
+          { domain: "api.github.com", credential: credentialId },
+          { domain: "api.githubcopilot.com", credential: credentialId },
+        ],
+      },
     },
+    tools: [
+      { type: "code_execution" },
+      { type: "google_search" },
+      {
+        type: "mcp_server",
+        name: "github",
+        url: "https://api.githubcopilot.com/mcp/",
+        ...({ credential: credentialId } as Record<string, unknown>),
+      },
+    ],
+    stream: true,
   },
-  tools: [
-    { type: "code_execution" },
-    { type: "google_search" },
-    {
-      type: "mcp_server",
-      name: "github",
-      url: "https://api.githubcopilot.com/mcp/",
-      ...({ credential: credentialId } as Record<string, unknown>),
-    },
-  ],
-  stream: true,
-});
+  { signal: abortController.signal },
+);
 ```
 
-## 5. Streaming Events, Server Helpers, and Cleanup
+## 5. Streaming Events and Resource Cleanup
 
-### Using `@google/genai` SDK Streaming (`for await (const ev of stream)`)
-SDK stream events use `ev.event_type`:
+### Consuming `@google/genai` SDK Streams (`for await (const ev of stream)`)
+SDK stream events expose `ev.event_type`:
 - `"interaction.created"` -> `ev.interaction?.id`, `(ev.interaction as { environment_id?: string } | undefined)?.environment_id`
 - `"interaction.status_update"` -> lifecycle status updates while the remote VM boots or executes
-- `"step.start"` -> `ev.index`, `ev.step` (`type`: `"thought"`, `"mcp_server_tool_call"`, `"mcp_server_tool_result"`, `"code_execution_call"`, `"code_execution_result"`, `"function_call"`, `"function_result"`, `"google_search_call"`, `"model_output"`)
-- `"step.delta"` -> `ev.index`, `ev.delta` (`delta.type === "text"` for markdown chunks, `delta.type === "thought_summary"` for reasoning titles). **Important**: when `stream: true`, `ev.interaction.output_text` on `"interaction.completed"` is `undefined` — accumulate `outputText += delta.text` from `"step.delta"` events on `"model_output"` (non-`"thought"`) steps!
+- `"step.start"` -> `ev.index`, `ev.step` (`type`: `"thought"`, `"mcp_server_tool_call"`, `"mcp_server_tool_result"`, `"code_execution_call"`, `"code_execution_result"`, `"function_call"`, `"function_result"`, `"google_search_call"`, `"model_output"`; tool calls expose `step.id`, `step.name`, `step.arguments`; tool results expose `step.call_id`, `step.is_error`, `step.exit_code`)
+- `"step.delta"` -> `ev.index`, `ev.delta` (`delta.type === "text"` for markdown chunks, `delta.type === "thought_summary"` with `delta.content?.text` or `delta.text` for reasoning summaries, or streamed `*_call` / `*_result` deltas). **Important**: when `stream: true`, `ev.interaction.output_text` on `"interaction.completed"` is `undefined` — accumulate `outputText += delta.text` from `"step.delta"` events on `"model_output"` (non-`"thought"`) steps!
 - `"step.stop"` -> `ev.index`
 - `"interaction.completed"` -> `ev.interaction?.status`, `(ev.interaction as { environment_id?: string } | undefined)?.environment_id`
 - `"error"` -> `ev.error`
 
-### Using the Pre-Built Express Helpers (`server/gemini.ts` & `server/agentStream.ts`)
-In Step 4 (`server/auth.ts` and `server/chat.ts`), you can use either `GoogleGenAI` (`apiVersion: "v1beta"`) or the pre-wired `GeminiClient` + `AgentStreamMapper`:
-- `await gemini.createBearerCredential({ id: credentialId, token })`
-- `await gemini.listCredentials()` / `await gemini.deleteCredential(credentialId)`
-- `await gemini.deleteEnvironment(environmentId)` (or `await client.environments.delete(environmentId)`)
-- `const sse = await gemini.streamInteraction(body, abortSignal)` -> pass each frame to `mapper.handle(frame)` (or SDK events to `mapper.handleSdkEvent(ev)`) to emit sanitized `{ type: "status" | "step" | "stepdone" | "text" }` events for the React UI.
-- Resource cleanup on logout: always delete both the session credential (`review-s-<hex>`) and sandbox `environmentId`.
+### Canceling Interactions and Cleaning Up Remote Resources
+- Cancel an in-flight interaction when a client disconnects: `await client.interactions.cancel(interactionId).catch(() => undefined)`
+- Delete sandbox environments on chat reset or sign-out: `await client.environments.delete(environmentId).catch(() => undefined)`
+- Delete session credentials on sign-out: `await client.credentials.delete(credentialId).catch(() => undefined)`
 
 ## Authoritative Docs (Fetch Only If Needed)
 

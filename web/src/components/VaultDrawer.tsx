@@ -149,7 +149,7 @@ export function VaultDrawer({ open, activeEnvOverride, onClose }: VaultDrawerPro
                 </div>
               ) : (
                 <p className="empty-inline">
-                  No skill files mounted yet. Run <code>bun run agent:sync</code> in Step 2.
+                  No skill files mounted yet. Register saved agent <code>pr-reviewer</code> in Step 2.
                 </p>
               )}
             </div>

@@ -1,4 +1,4 @@
-export type StepKind = "mcp" | "code" | "search" | "thought";
+export type StepKind = "mcp" | "code" | "tool" | "search" | "thought";
 export type StepState = "running" | "done" | "error";
 
 export interface Step {
@@ -52,6 +52,7 @@ export interface VaultCredential {
   type: string;
   status: string;
   create_time: string | null;
+  update_time?: string | null;
   isCurrentSession: boolean;
 }
 
