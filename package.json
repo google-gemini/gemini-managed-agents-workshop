@@ -13,7 +13,7 @@
     "agent:sync": "bun --env-file=.env scripts/sync-agent.ts",
     "solution:sync": "bun --env-file=.env solution/scripts/sync-agent.ts",
     "typecheck": "bunx tsc -p tsconfig.json && bunx tsc -p web/tsconfig.json",
-    "check:py": "uv run python3 -B -m py_compile solution/agent/skills/pr-review/scripts/inspect_pr.py",
+    "check:py": "uv run python3 -B -m py_compile solution/agent/skills/pr-review/scripts/inspect_pr.py solution/agent/skills/gemini-api-dev/scripts/voice_notes.py",
     "test": "bun test"
   },
   "dependencies": {

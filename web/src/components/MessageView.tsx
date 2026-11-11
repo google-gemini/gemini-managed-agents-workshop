@@ -3,12 +3,38 @@ import type { Message, Step, StepKind } from "../types";
 import { CheckIcon, CopyIcon, ErrorIcon, ExpandIcon, RefreshIcon, StepKindIcon } from "./Icons";
 import { Sparkle } from "./Logo";
 import { MarkdownText } from "./Markdown";
+import { VoicePlayer } from "./VoicePlayer";
 import { tidyStreamingMarkdown } from "../markdownStream";
 
-export const UserMessage = memo(function UserMessage({ text }: { text: string }) {
+export const UserMessage = memo(function UserMessage({ message }: { message: Message }) {
+  if (message.voice) {
+    const showTranscript =
+      Boolean(message.text && message.text !== "Voice note") || Boolean(message.voice.transcribing);
+    return (
+      <div className="msg msg-user">
+        <div className="bubble bubble-voice">
+          <VoicePlayer
+            audioUrl={message.voice.audioUrl}
+            variant="user"
+            durationHintSec={message.voice.durationSec}
+          />
+          {showTranscript && (
+            <div className="voice-user-transcript">
+              <span className="voice-transcript-tag">Smart Transcript</span>
+              <p className="voice-transcript-text">
+                {message.voice.transcribing && (!message.text || message.text === "Voice note")
+                  ? "Transcribing in sandbox with Gemini 3.5 Smart Mode…"
+                  : message.text}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="msg msg-user">
-      <div className="bubble">{text}</div>
+      <div className="bubble">{message.text}</div>
     </div>
   );
 });
@@ -174,17 +200,20 @@ function CopyButton({ text }: { text: string }) {
 interface AssistantMessageProps {
   message: Message;
   isTourTarget?: boolean;
+  autoPlayVoice?: boolean;
   onRetry?: (() => void) | undefined;
 }
 
 export const AssistantMessage = memo(function AssistantMessage({
   message,
   isTourTarget = false,
+  autoPlayVoice = false,
   onRetry,
 }: AssistantMessageProps) {
   const streaming = message.status === "streaming";
   const steps = message.steps ?? [];
   const hasText = message.text.length > 0;
+  const hasVoice = Boolean(message.voice?.audioUrl);
   const interrupted = message.status === "stopped" || message.status === "error" || message.status === "incomplete";
   const note =
     message.status === "stopped"
@@ -206,6 +235,15 @@ export const AssistantMessage = memo(function AssistantMessage({
             interrupted={interrupted}
             liveStatus={message.liveStatus}
             isTourTarget={isTourTarget}
+          />
+        )}
+        {hasVoice && message.voice && (
+          <VoicePlayer
+            audioUrl={message.voice.audioUrl}
+            variant="assistant"
+            voiceName={message.voice.voice}
+            summaryText={message.voice.summaryText}
+            autoPlay={autoPlayVoice}
           />
         )}
         {hasText && (

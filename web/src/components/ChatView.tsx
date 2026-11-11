@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { fetchMe, HttpError, resetChat, signOut, streamChat } from "../api";
-import type { ChatEvent, Me, Message, MessageStatus, Step } from "../types";
+import { fetchMe, HttpError, resetChat, signOut, streamChat, streamVoiceChat } from "../api";
+import type { ChatEvent, Me, Message, MessageStatus, Step, TtsVoiceName } from "../types";
 import { Composer } from "./Composer";
 import { GuidedTour, hasSeenTour, markTourSeen, TOUR_STOPS } from "./GuidedTour";
 import {
@@ -65,6 +65,16 @@ function applyEvent(m: Message, ev: ChatEvent): Message {
     }
     case "text":
       return { ...m, text: m.text + ev.data.delta };
+    case "audio":
+      return {
+        ...m,
+        voice: {
+          audioUrl: ev.data.audioUrl,
+          mimeType: ev.data.mimeType,
+          ...(ev.data.voice ? { voice: ev.data.voice } : {}),
+          ...(ev.data.summaryText ? { summaryText: ev.data.summaryText } : {}),
+        },
+      };
     case "error":
       return { ...m, error: ev.data.message };
     case "done":
@@ -152,6 +162,12 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
   const [announcement, setAnnouncement] = useState("");
   const [vaultOpen, setVaultOpen] = useState(false);
   const [activeEnvId, setActiveEnvId] = useState<string | null>(null);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceName, setVoiceName] = useState<TtsVoiceName>("Kore");
+  const [autoPlayVoice, setAutoPlayVoice] = useState(true);
+  const [autoPlayTargetId, setAutoPlayTargetId] = useState<string | null>(null);
+  const lastVoiceTurnRef = useRef<{ blob: Blob; mimeType: string; durationSec: number } | null>(null);
+  const blobUrlsRef = useRef<string[]>([]);
 
   // Auto-open the 4-stop spotlight tour once on first sign-in in solution or configured mode.
   const [tourActive, setTourActive] = useState<boolean>(() => {
@@ -175,6 +191,12 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
   useEffect(() => {
     expiredRef.current = onSessionExpired;
   }, [onSessionExpired]);
+  useEffect(() => {
+    return () => {
+      for (const u of blobUrlsRef.current) URL.revokeObjectURL(u);
+      blobUrlsRef.current = [];
+    };
+  }, []);
 
   useEffect(() => {
     if (!tourActive) focusIfDesktop(inputRef.current);
@@ -302,9 +324,131 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
     }
   }, []);
 
+  const sendVoice = useCallback(
+    async (blob: Blob, mimeType: string, durationSec: number) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
+      setBusy(true);
+      setNotice(null);
+      setAnnouncement("");
+      lastVoiceTurnRef.current = { blob, mimeType, durationSec };
+
+      const localUrl = URL.createObjectURL(blob);
+      blobUrlsRef.current.push(localUrl);
+
+      const localUserId = crypto.randomUUID();
+      const botId = crypto.randomUUID();
+      setAutoPlayTargetId(botId);
+      pinnedRef.current = true;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: localUserId,
+          role: "user",
+          text: "Voice note",
+          voice: {
+            audioUrl: localUrl,
+            mimeType,
+            durationSec,
+            transcribing: true,
+          },
+        },
+        {
+          id: botId,
+          role: "assistant",
+          text: "",
+          status: "streaming",
+          steps: [],
+          liveStatus: "Staging voice note in sandbox",
+        },
+      ]);
+
+      const updateAssistant = (fn: (m: Message) => Message) =>
+        setMessages((prev) => prev.map((m) => (m.id === botId ? fn(m) : m)));
+      const updateUser = (fn: (m: Message) => Message) =>
+        setMessages((prev) => prev.map((m) => (m.id === localUserId ? fn(m) : m)));
+      const finish = (patch: Partial<Message>) => {
+        updateUser((m) => (m.voice ? { ...m, voice: { ...m.voice, transcribing: false } } : m));
+        updateAssistant((m) => ({ ...m, ...patch, liveStatus: undefined, steps: settle(m.steps) }));
+      };
+
+      let queue: ChatEvent[] = [];
+      let timer: number | undefined;
+      const flush = () => {
+        window.clearTimeout(timer);
+        timer = undefined;
+        if (queue.length === 0) return;
+        const batch = queue;
+        queue = [];
+        updateAssistant((m) => batch.reduce(applyEvent, m));
+      };
+
+      const outcome: { status: MessageStatus | null } = { status: null };
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        await withCsrf(csrfRef, (token) =>
+          streamVoiceChat(blob, { mimeType, durationSec, voice: voiceName }, token, controller.signal, (ev) => {
+            if (ev.event === "user_voice") {
+              updateUser((m) => ({
+                ...m,
+                voice: {
+                  audioUrl: ev.data.audioUrl,
+                  mimeType: ev.data.mimeType,
+                  durationSec: ev.data.durationSec ?? m.voice?.durationSec,
+                  transcribing: m.voice?.transcribing ?? true,
+                },
+              }));
+              return;
+            }
+            if (ev.event === "transcript") {
+              updateUser((m) => ({
+                ...m,
+                text: ev.data.transcript,
+                ...(m.voice ? { voice: { ...m.voice, transcribing: false } } : {}),
+              }));
+              return;
+            }
+            if (ev.event === "done") {
+              outcome.status = ev.data.status;
+              if (ev.data.environmentId) setActiveEnvId(ev.data.environmentId);
+              updateUser((m) => (m.voice ? { ...m, voice: { ...m.voice, transcribing: false } } : m));
+            }
+            queue.push(ev);
+            timer ??= window.setTimeout(flush, FLUSH_MS);
+          }),
+        );
+        flush();
+        if (outcome.status === null) {
+          finish({ status: "error", error: "The connection closed before the voice review finished." });
+        }
+        setAnnouncement(outcome.status === "completed" ? "Voice summary and review ready" : "Response ended");
+      } catch (err) {
+        flush();
+        if (controller.signal.aborted) {
+          finish({ status: "stopped" });
+          setAnnouncement("Review stopped");
+        } else if (err instanceof HttpError && err.status === 401) {
+          expiredRef.current();
+        } else {
+          finish({ status: "error", error: describeFailure(err) });
+          setAnnouncement("Something went wrong");
+        }
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null;
+        busyRef.current = false;
+        setBusy(false);
+      }
+    },
+    [voiceName],
+  );
+
   const submitDraft = useCallback(() => {
     if (!draft.trim() || busyRef.current) return;
     setDraft("");
+    lastVoiceTurnRef.current = null;
     void send(draft);
   }, [draft, send]);
 
@@ -312,8 +456,14 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
 
   const retryLast = useCallback(() => {
     const lastUser = messagesRef.current.findLast((m) => m.role === "user");
-    if (lastUser) void send(lastUser.text);
-  }, [send]);
+    if (!lastUser) return;
+    if (lastUser.voice && lastVoiceTurnRef.current && (!lastUser.text || lastUser.text === "Voice note")) {
+      const { blob, mimeType, durationSec } = lastVoiceTurnRef.current;
+      void sendVoice(blob, mimeType, durationSec);
+      return;
+    }
+    void send(lastUser.text);
+  }, [send, sendVoice]);
 
   const newChat = useCallback(async () => {
     if (busyRef.current) return;
@@ -331,6 +481,10 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
       );
       return;
     }
+    for (const u of blobUrlsRef.current) URL.revokeObjectURL(u);
+    blobUrlsRef.current = [];
+    lastVoiceTurnRef.current = null;
+    setAutoPlayTargetId(null);
     pinnedRef.current = true;
     setAtBottom(true);
     setElevated(false);
@@ -389,12 +543,13 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
             <div className="thread" role="log" aria-label="PR Review Conversation" aria-live="off">
               {messages.map((m, i) =>
                 m.role === "user" ? (
-                  <UserMessage key={m.id} text={m.text} />
+                  <UserMessage key={m.id} message={m} />
                 ) : (
                   <AssistantMessage
                     key={m.id}
                     message={m}
                     isTourTarget={i === lastAssistantIndex}
+                    autoPlayVoice={autoPlayVoice && m.id === autoPlayTargetId}
                     onRetry={i === lastIndex && !busy && isRetryable(m) ? retryLast : undefined}
                   />
                 ),
@@ -419,8 +574,16 @@ export function ChatView({ me, onSessionExpired }: ChatViewProps) {
           value={draft}
           onChange={setDraft}
           onSend={submitDraft}
+          onSendVoice={(blob, mimeType, durationSec) => void sendVoice(blob, mimeType, durationSec)}
           onStop={stop}
+          onErrorNotice={setNotice}
           busy={busy}
+          voiceMode={voiceMode}
+          onVoiceModeChange={setVoiceMode}
+          voiceName={voiceName}
+          onVoiceNameChange={setVoiceName}
+          autoPlayVoice={autoPlayVoice}
+          onAutoPlayVoiceChange={setAutoPlayVoice}
           inputRef={inputRef}
         />
       </div>

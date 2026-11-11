@@ -27,6 +27,7 @@ import {
   slidesCsp,
 } from "./security.ts";
 import type { AgentSyncStatus } from "./types.ts";
+import { VoiceClipStore } from "./voiceStore.ts";
 
 // solution/server/ sits two levels below repo root.
 const DIST_DIR = fileURLToPath(new URL("../../dist/web/", import.meta.url));
@@ -67,6 +68,7 @@ export function createApp({
 }: CreateAppOptions) {
   const app = express();
   const cookieName = sessionCookieName(cfg);
+  const voiceStore = new VoiceClipStore();
   app.disable("x-powered-by");
   app.set("query parser", "simple");
   // TODO(security): when deployed behind a TLS-terminating reverse proxy, match its hop count.
@@ -116,7 +118,8 @@ export function createApp({
     }),
   );
   app.use(
-    absoluteTimeout(ABSOLUTE_TIMEOUT_MS, (resources) => {
+    absoluteTimeout(ABSOLUTE_TIMEOUT_MS, (resources, expiredSid) => {
+      if (expiredSid) voiceStore.clearSession(expiredSid);
       void cleanupRemoteResources(gemini, resources);
     }),
   );
@@ -130,7 +133,7 @@ export function createApp({
   };
   app.get("/", noStore, serveSpa);
 
-  const auth = createAuth({ cfg, gemini, cookieName, ...(fetchImpl ? { fetchImpl } : {}) });
+  const auth = createAuth({ cfg, gemini, cookieName, voiceStore, ...(fetchImpl ? { fetchImpl } : {}) });
   app.use("/auth", noStore, authLimiter, auth.router);
 
   const api = Router();
@@ -169,7 +172,7 @@ export function createApp({
   api.post("/auth/logout", auth.logout);
   api.use(requireAuth);
 
-  api.use(createChatRouter({ cfg, gemini, agentDir, agentStatus }));
+  api.use(createChatRouter({ cfg, gemini, agentDir, agentStatus, voiceStore }));
 
   app.use(
     "/api",

@@ -11,6 +11,17 @@ export interface Step {
 
 export type MessageStatus = "streaming" | "completed" | "stopped" | "error" | "incomplete";
 
+export type TtsVoiceName = "Kore" | "Puck" | "Aoede" | "Charon" | "Fenrir";
+
+export interface VoiceNoteMeta {
+  audioUrl: string;
+  mimeType: string;
+  durationSec?: number;
+  summaryText?: string;
+  voice?: string;
+  transcribing?: boolean;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -19,6 +30,7 @@ export interface Message {
   steps?: Step[];
   liveStatus?: string;
   error?: string;
+  voice?: VoiceNoteMeta;
 }
 
 export type WorkshopMode = "starter" | "solution" | "configured";
@@ -68,12 +80,21 @@ export interface VaultStatus {
   credentials: VaultCredential[];
 }
 
-/** Server-sent events emitted by POST /api/chat. */
+/** Server-sent events emitted by POST /api/chat and POST /api/chat/voice. */
 export type ChatEvent =
   | { event: "status"; data: { text: string } }
   | { event: "step"; data: { step: Step } }
   | { event: "stepdone"; data: { id: string; ok: boolean } }
   | { event: "text"; data: { delta: string } }
+  | {
+      event: "user_voice";
+      data: { messageId: string; audioUrl: string; mimeType: string; durationSec?: number };
+    }
+  | { event: "transcript"; data: { messageId: string; transcript: string } }
+  | {
+      event: "audio";
+      data: { audioUrl: string; mimeType: string; voice?: string; summaryText?: string };
+    }
   | { event: "error"; data: { code: string; message: string } }
   | {
       event: "done";

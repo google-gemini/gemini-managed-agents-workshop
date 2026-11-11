@@ -14,6 +14,7 @@ export function securityHeaders(isHttps: boolean): RequestHandler[] {
     // TODO(security): Vite CSS bundles load from 'self'; style-src-attr 'unsafe-inline' permits React style={{...}} attributes while keeping script-src strictly 'self'.
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "https://avatars.githubusercontent.com"],
+    "media-src": ["'self'", "blob:"],
     "font-src": ["'self'", "data:"],
     "connect-src": ["'self'"],
     "manifest-src": ["'self'"],
@@ -37,7 +38,7 @@ export function securityHeaders(isHttps: boolean): RequestHandler[] {
     (_req, res, next) => {
       res.setHeader(
         "Permissions-Policy",
-        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), browsing-topics=()",
+        "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), browsing-topics=()",
       );
       next();
     },
@@ -154,17 +155,22 @@ export const requireAuth: RequestHandler = (req, res, next) => {
   res.status(401).json({ error: "unauthenticated" });
 };
 
-export function absoluteTimeout(maxAgeMs: number, onExpire: (resources: RemoteResources) => void): RequestHandler {
+export function absoluteTimeout(
+  maxAgeMs: number,
+  onExpire: (resources: RemoteResources, sessionId: string) => void,
+): RequestHandler {
   return (req, _res, next) => {
     const createdAt = req.session?.createdAt;
     if (!req.session?.user || typeof createdAt !== "number" || Date.now() - createdAt <= maxAgeMs) return next();
+    const expiredSid = req.sessionID;
     const resources: RemoteResources = {
       credentialId: req.session.credentialId,
+      geminiCredentialId: req.session.geminiCredentialId,
       environmentId: req.session.chat?.environmentId,
     };
     req.session.regenerate((err) => {
       if (err) return next(err);
-      onExpire(resources);
+      onExpire(resources, expiredSid);
       next();
     });
   };

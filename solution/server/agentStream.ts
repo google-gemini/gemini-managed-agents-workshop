@@ -58,6 +58,24 @@ export function describeCode(code: string): { kind: StepKind; label: string; det
     return { kind: "code", label, ...(detail ? { detail } : {}) };
   }
 
+  const voiceMatch = /voice_notes\.py["']?\s+(transcribe|speak)([^\n;&|]*)/.exec(code);
+  if (voiceMatch) {
+    const subcmd = voiceMatch[1] ?? "";
+    const rest = voiceMatch[2] ?? "";
+    if (subcmd === "transcribe") {
+      return { kind: "code", label: "Transcribing voice note · Gemini 3.5 Smart Mode" };
+    }
+    const voice = /--voice[=\s]+["']?([A-Za-z0-9_-]+)/.exec(rest)?.[1];
+    return {
+      kind: "code",
+      label: "Generating voice summary · Gemini 3.8 Flash-Lite TTS",
+      ...(voice ? { detail: `Voice · ${voice}` } : {}),
+    };
+  }
+
+  if (/\/\.agents\/skills\/gemini-api-dev\//.test(code)) {
+    return { kind: "code", label: "Loading Gemini API dev skill" };
+  }
   if (/\/\.agents\/(?:AGENTS\.md|skills\/)/.test(code)) {
     return { kind: "code", label: "Loading PR review skill" };
   }

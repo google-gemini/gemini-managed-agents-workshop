@@ -190,7 +190,7 @@ export function VaultDrawer({ open, tourActive, activeEnvOverride, onClose }: Va
                 <div className="host-chips">
                   {allowlist.map((host) => (
                     <span key={host} className="host-chip">
-                      <GitHubIcon size={12} />
+                      {host.includes("github") ? <GitHubIcon size={12} /> : <GlobeIcon size={12} />}
                       <code>{host}</code>
                     </span>
                   ))}

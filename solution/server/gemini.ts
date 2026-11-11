@@ -1,7 +1,9 @@
 // Thin REST client for the Gemini Managed Agents API (v1beta, x-goog-api-key auth).
 
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
+const UPLOAD_BASE = "https://generativelanguage.googleapis.com/upload/v1beta";
 const SAFE_ID = /^[A-Za-z0-9_-]{1,256}$/;
+const SAFE_PATH_SEGMENT = /^[A-Za-z0-9_.-]{1,128}$/;
 const MAX_SSE_BUFFER = 4 * 1024 * 1024;
 
 export class GeminiError extends Error {
@@ -32,6 +34,18 @@ export interface CredentialSummary {
 function safeId(id: string, kind: string): string {
   if (!SAFE_ID.test(id)) throw new GeminiError(400, `Invalid ${kind} id`);
   return id;
+}
+
+function encodeEnvFilePath(rawPath: string): string {
+  const trimmed = rawPath.replace(/^\/+/, "");
+  const segments = trimmed.split("/").filter(Boolean);
+  if (segments.length === 0) throw new GeminiError(400, "Invalid environment file path");
+  for (const seg of segments) {
+    if (seg === "." || seg === ".." || !SAFE_PATH_SEGMENT.test(seg)) {
+      throw new GeminiError(400, "Invalid environment file path segment");
+    }
+  }
+  return segments.map((s) => encodeURIComponent(s)).join("/");
 }
 
 function parseJson(text: string): unknown {
@@ -122,7 +136,12 @@ export class GeminiClient {
     );
   }
 
-  async createBearerCredential(input: { id: string; token: string }): Promise<void> {
+  async createBearerCredential(input: {
+    id: string;
+    token: string;
+    headerName?: string;
+    prefix?: string;
+  }): Promise<void> {
     await this.#request(
       "POST",
       "/credentials",
@@ -130,6 +149,8 @@ export class GeminiClient {
         id: safeId(input.id, "credential"),
         type: "bearer_token",
         token: input.token,
+        ...(input.headerName !== undefined ? { header_name: input.headerName } : {}),
+        ...(input.prefix !== undefined ? { prefix: input.prefix } : {}),
       },
       45_000,
     );
@@ -150,6 +171,79 @@ export class GeminiClient {
   }
 
   // ---- environments ----
+
+  /**
+   * Provisions a fresh remote sandbox environment forked from the saved agent's `base_environment`
+   * without advancing conversation history (`previous_interaction_id` is discarded).
+   */
+  async bootstrapEnvironment(agentId: string, signal?: AbortSignal): Promise<{ id: string }> {
+    const res = await this.#fetchImpl(`${API_BASE}/interactions`, {
+      method: "POST",
+      headers: this.#headers(),
+      body: JSON.stringify({
+        agent: safeId(agentId, "agent"),
+        input: [{ type: "text", text: "Reply READY only. Do not call tools or bash." }],
+        tools: [],
+        environment: "remote",
+      }),
+      signal: signal ?? AbortSignal.timeout(60_000),
+    });
+    const json = parseJson(await res.text());
+    if (!res.ok) throw toError(res.status, json);
+    const id = (json as { environment_id?: unknown } | undefined)?.environment_id;
+    if (typeof id !== "string" || !id) {
+      throw new GeminiError(502, "Environment bootstrap interaction did not return an environment_id");
+    }
+    return { id };
+  }
+
+  async uploadEnvironmentFile(
+    environmentId: string,
+    filePath: string,
+    bytes: Uint8Array,
+    mimeType: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const envId = safeId(environmentId, "environment");
+    const encodedPath = encodeEnvFilePath(filePath);
+    const bodyCopy = new Uint8Array(bytes.byteLength);
+    bodyCopy.set(bytes);
+    const res = await this.#fetchImpl(`${UPLOAD_BASE}/environments/${envId}/files/${encodedPath}?overwrite=true`, {
+      method: "PUT",
+      headers: {
+        "x-goog-api-key": this.#ensureKey(),
+        "Content-Type": mimeType,
+      },
+      body: bodyCopy,
+      signal: signal ?? AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      throw toError(res.status, parseJson(await res.text().catch(() => "")));
+    }
+  }
+
+  async downloadEnvironmentFile(environmentId: string, filePath: string, signal?: AbortSignal): Promise<Uint8Array | null> {
+    const envId = safeId(environmentId, "environment");
+    const candidates = [filePath.replace(/^\/+/, "")];
+    if (candidates[0]?.startsWith("workspace/")) {
+      candidates.push(candidates[0].slice("workspace/".length));
+    }
+
+    for (const candidate of candidates) {
+      const encodedPath = encodeEnvFilePath(candidate);
+      const res = await this.#fetchImpl(`${API_BASE}/environments/${envId}/files/${encodedPath}?alt=media`, {
+        method: "GET",
+        headers: { "x-goog-api-key": this.#ensureKey() },
+        signal: signal ?? AbortSignal.timeout(45_000),
+      });
+      if (res.status === 404) continue;
+      if (!res.ok) {
+        throw toError(res.status, parseJson(await res.text().catch(() => "")));
+      }
+      return new Uint8Array(await res.arrayBuffer());
+    }
+    return null;
+  }
 
   async deleteEnvironment(id: string): Promise<void> {
     await this.#deleteIgnoringMissing(`/environments/${safeId(id, "environment")}`);

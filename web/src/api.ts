@@ -1,4 +1,4 @@
-import type { ChatEvent, Me, SessionResult, SignedOutMeta, VaultStatus } from "./types";
+import type { ChatEvent, Me, SessionResult, SignedOutMeta, TtsVoiceName, VaultStatus } from "./types";
 
 export class HttpError extends Error {
   readonly status: number;
@@ -98,15 +98,7 @@ export async function signOut(csrfToken: string): Promise<void> {
   }
 }
 
-/** Streams one chat turn over SSE. Resolves when the server closes the stream. */
-export async function streamChat(
-  message: string,
-  csrfToken: string,
-  signal: AbortSignal,
-  onEvent: (ev: ChatEvent) => void,
-): Promise<void> {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const res = await post("/api/chat", csrfToken, { message, timeZone }, signal);
+async function consumeSse(res: Response, onEvent: (ev: ChatEvent) => void): Promise<void> {
   if (!res.ok || !res.body) throw await errorFrom(res);
 
   const reader = res.body.getReader();
@@ -135,4 +127,47 @@ export async function streamChat(
       }
     }
   }
+}
+
+/** Streams one chat turn over SSE. Resolves when the server closes the stream. */
+export async function streamChat(
+  message: string,
+  csrfToken: string,
+  signal: AbortSignal,
+  onEvent: (ev: ChatEvent) => void,
+): Promise<void> {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const res = await post("/api/chat", csrfToken, { message, timeZone }, signal);
+  await consumeSse(res, onEvent);
+}
+
+/** Uploads a recorded voice note to POST /api/chat/voice and streams the Managed Agent turn over SSE. */
+export async function streamVoiceChat(
+  audioBlob: Blob,
+  opts: { mimeType: string; durationSec?: number; voice: TtsVoiceName },
+  csrfToken: string,
+  signal: AbortSignal,
+  onEvent: (ev: ChatEvent) => void,
+): Promise<void> {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const cleanMime = opts.mimeType.split(";", 1)[0]?.trim() || "audio/webm";
+  const headers: Record<string, string> = {
+    "Content-Type": cleanMime,
+    "x-audio-mime": cleanMime,
+    "x-time-zone": timeZone,
+    "x-voice-name": opts.voice,
+    "x-csrf-token": csrfToken,
+  };
+  if (opts.durationSec !== undefined && Number.isFinite(opts.durationSec)) {
+    headers["x-audio-duration"] = String(Math.round(opts.durationSec * 10) / 10);
+  }
+  const res = await fetch("/api/chat/voice", {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers,
+    body: audioBlob,
+    signal,
+  });
+  await consumeSse(res, onEvent);
 }

@@ -4,11 +4,12 @@
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { Router, type Request, type RequestHandler, type Response } from "express";
-import { CREDENTIAL_PREFIX, type AppConfig } from "./config.ts";
+import { CREDENTIAL_PREFIX, GEMINI_CREDENTIAL_PREFIX, type AppConfig } from "./config.ts";
 import type { GeminiClient } from "./gemini.ts";
 import { cleanupRemoteResources } from "./janitor.ts";
 import { describeError, log } from "./log.ts";
 import type { AuthMode, RemoteResources, SessionUser } from "./types.ts";
+import type { VoiceClipStore } from "./voiceStore.ts";
 
 const GITHUB_AUTH_ENDPOINT = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token";
@@ -108,10 +109,11 @@ export interface AuthDeps {
   cfg: AppConfig;
   gemini: GeminiClient;
   cookieName: string;
+  voiceStore?: VoiceClipStore;
   fetchImpl?: typeof fetch;
 }
 
-export function createAuth({ cfg, gemini, cookieName, fetchImpl = fetch }: AuthDeps): {
+export function createAuth({ cfg, gemini, cookieName, voiceStore, fetchImpl = fetch }: AuthDeps): {
   router: Router;
   logout: RequestHandler;
 } {
@@ -145,16 +147,27 @@ export function createAuth({ cfg, gemini, cookieName, fetchImpl = fetch }: AuthD
     }
 
     const credentialId = CREDENTIAL_PREFIX + randomBytes(12).toString("hex");
+    const geminiCredentialId = GEMINI_CREDENTIAL_PREFIX + randomBytes(12).toString("hex");
     try {
       await gemini.createBearerCredential({ id: credentialId, token });
+      await gemini.createBearerCredential({
+        id: geminiCredentialId,
+        token: cfg.geminiApiKey,
+        headerName: "x-goog-api-key",
+        prefix: "",
+      });
     } catch (err) {
-      log.error("could not store github credential in the Gemini vault", { error: describeError(err) });
+      log.error("could not store session credentials in the Gemini vault", { error: describeError(err) });
+      await gemini.deleteCredential(credentialId).catch(() => undefined);
+      await gemini.deleteCredential(geminiCredentialId).catch(() => undefined);
       fail(res, "vault");
       return;
     }
 
+    const previousSid = req.sessionID;
     const previous: RemoteResources = {
       credentialId: req.session.credentialId,
+      geminiCredentialId: req.session.geminiCredentialId,
       environmentId: req.session.chat?.environmentId,
     };
     const user: SessionUser = {
@@ -173,15 +186,18 @@ export function createAuth({ cfg, gemini, cookieName, fetchImpl = fetch }: AuthD
       req.session.user = user;
       req.session.createdAt = Date.now();
       req.session.credentialId = credentialId;
+      req.session.geminiCredentialId = geminiCredentialId;
       req.session.chat = { messages: [] };
       await save(req);
     } catch (err) {
       log.error("session setup failed", { error: describeError(err) });
       await gemini.deleteCredential(credentialId).catch(() => undefined);
+      await gemini.deleteCredential(geminiCredentialId).catch(() => undefined);
       fail(res, "failed");
       return;
     }
 
+    if (previousSid) voiceStore?.clearSession(previousSid);
     void cleanupRemoteResources(gemini, previous);
     log.info("user signed in", { provider: "github", authMode });
     res.redirect(303, "/");
@@ -272,10 +288,13 @@ export function createAuth({ cfg, gemini, cookieName, fetchImpl = fetch }: AuthD
   });
 
   const logout: RequestHandler = async (req, res) => {
+    const sid = req.sessionID;
     const resources: RemoteResources = {
       credentialId: req.session?.credentialId,
+      geminiCredentialId: req.session?.geminiCredentialId,
       environmentId: req.session?.chat?.environmentId,
     };
+    if (sid) voiceStore?.clearSession(sid);
     await new Promise<void>((resolve) => (req.session ? req.session.destroy(() => resolve()) : resolve()));
     res.clearCookie(cookieName, { path: "/", httpOnly: true, sameSite: "lax", secure: cfg.isHttps });
     // TODO(security): Deleting the vault credential immediately revokes sandbox/MCP access; users can

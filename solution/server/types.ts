@@ -28,6 +28,15 @@ export interface StoredStep {
 
 export type MessageStatus = "completed" | "stopped" | "error" | "incomplete";
 
+export interface VoiceNoteMeta {
+  audioId: string;
+  audioUrl: string;
+  mimeType: string;
+  durationSec?: number;
+  summaryText?: string;
+  voice?: string;
+}
+
 export interface StoredMessage {
   id: string;
   role: "user" | "assistant";
@@ -36,6 +45,7 @@ export interface StoredMessage {
   status?: MessageStatus;
   error?: string;
   steps?: StoredStep[];
+  voice?: VoiceNoteMeta;
 }
 
 export interface ChatState {
@@ -53,6 +63,7 @@ export interface PendingOAuth {
 
 export interface RemoteResources {
   credentialId?: string | undefined;
+  geminiCredentialId?: string | undefined;
   environmentId?: string | undefined;
 }
 

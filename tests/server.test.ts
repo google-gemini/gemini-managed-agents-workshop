@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import type { Server } from "node:http";
+import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -199,6 +199,9 @@ describe("Solution Agent Definition, Python Skill & Stream Mapper", () => {
     expect(def.id).toBe("pr-reviewer");
     expect([...def.files].sort()).toEqual([
       "AGENTS.md",
+      "skills/gemini-api-dev/SKILL.md",
+      "skills/gemini-api-dev/references/audio-and-tts.md",
+      "skills/gemini-api-dev/scripts/voice_notes.py",
       "skills/pr-review/SKILL.md",
       "skills/pr-review/scripts/inspect_pr.py",
     ]);
@@ -240,6 +243,136 @@ describe("Solution Agent Definition, Python Skill & Stream Mapper", () => {
       cwd: REPO_ROOT,
     });
     expect(traversalProc.exitCode).toBe(2);
+  });
+
+  test("voice_notes.py runs gemini-3.5-transcribe (smart mode) and gemini-3.8-flash-lite-tts WAV synthesis cleanly", async () => {
+    const capturedRequests: Array<Record<string, unknown>> = [];
+    const mockGeminiServer = await new Promise<Server>((resolve) => {
+      const srv = createServer((req, res) => {
+        const chunks: Buffer[] = [];
+        req.on("data", (c: Buffer) => chunks.push(c));
+        req.on("end", () => {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+          capturedRequests.push(body);
+          res.setHeader("Content-Type", "application/json");
+          if (body.model === "gemini-3.5-transcribe") {
+            res.end(
+              JSON.stringify({
+                id: "int_transcribe_1",
+                status: "completed",
+                output_text: "Review the newest open PR on google/budoux.",
+              }),
+            );
+            return;
+          }
+          if (body.model === "gemini-3.8-flash-lite-tts") {
+            // Return raw 16-bit PCM bytes to verify automatic RIFF WAV wrapping too.
+            const pcm = Buffer.alloc(480, 0);
+            res.end(
+              JSON.stringify({
+                id: "int_tts_1",
+                status: "completed",
+                output_audio: { type: "audio", mime_type: "audio/l16", data: pcm.toString("base64") },
+              }),
+            );
+            return;
+          }
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: { message: "unexpected model" } }));
+        });
+      });
+      srv.listen(0, "127.0.0.1", () => resolve(srv));
+    });
+    activeServers.push({ server: mockGeminiServer, stopStore: () => undefined });
+    const mockPort = (mockGeminiServer.address() as AddressInfo).port;
+    const apiBase = `http://127.0.0.1:${mockPort}/v1beta`;
+
+    const voiceDir = path.join(TMP_DIR, "voice-cli");
+    await mkdir(voiceDir, { recursive: true });
+    const inAudio = path.join(voiceDir, "in.webm");
+    const transcriptJson = path.join(voiceDir, "transcript.json");
+    const outWav = path.join(voiceDir, "out.wav");
+    const outMeta = path.join(voiceDir, "out.json");
+    await writeFile(inAudio, Buffer.from("fake-webm-audio-payload"));
+
+    const voiceScript = path.join(REPO_ROOT, "solution/agent/skills/gemini-api-dev/scripts/voice_notes.py");
+
+    const transProc = Bun.spawnSync(
+      [
+        "uv",
+        "run",
+        "python3",
+        voiceScript,
+        "transcribe",
+        "--input",
+        inAudio,
+        "--mime-type",
+        "audio/webm;codecs=opus",
+        "--output-json",
+        transcriptJson,
+        "--api-base",
+        apiBase,
+      ],
+      { cwd: REPO_ROOT },
+    );
+    expect(transProc.exitCode).toBe(0);
+    const transOut = JSON.parse(new TextDecoder().decode(transProc.stdout)) as {
+      ok: boolean;
+      model: string;
+      mode: string;
+      transcript: string;
+    };
+    expect(transOut).toMatchObject({
+      ok: true,
+      model: "gemini-3.5-transcribe",
+      mode: "smart",
+      transcript: "Review the newest open PR on google/budoux.",
+    });
+    expect(capturedRequests[0]?.generation_config).toEqual({
+      transcription_config: { mode: "smart" },
+    });
+
+    const speakProc = Bun.spawnSync(
+      [
+        "uv",
+        "run",
+        "python3",
+        voiceScript,
+        "speak",
+        "--text",
+        "PR 42 passes all tests in the sandbox and is ready to merge.",
+        "--voice",
+        "Puck",
+        "--output",
+        outWav,
+        "--meta-json",
+        outMeta,
+        "--api-base",
+        apiBase,
+      ],
+      { cwd: REPO_ROOT },
+    );
+    expect(speakProc.exitCode).toBe(0);
+    const speakOut = JSON.parse(new TextDecoder().decode(speakProc.stdout)) as {
+      ok: boolean;
+      model: string;
+      voice: string;
+      bytes: number;
+    };
+    expect(speakOut.ok).toBe(true);
+    expect(speakOut.model).toBe("gemini-3.8-flash-lite-tts");
+    expect(speakOut.voice).toBe("Puck");
+    expect(speakOut.bytes).toBe(44 + 480);
+
+    const wavBytes = await Bun.file(outWav).bytes();
+    expect(new TextDecoder().decode(wavBytes.slice(0, 4))).toBe("RIFF");
+    expect(new TextDecoder().decode(wavBytes.slice(8, 12))).toBe("WAVE");
+
+    const badPathProc = Bun.spawnSync(
+      ["uv", "run", "python3", voiceScript, "transcribe", "--input", "/etc/hosts", "--api-base", apiBase],
+      { cwd: REPO_ROOT },
+    );
+    expect(badPathProc.exitCode).toBe(2);
   });
 
   test("AgentStreamMapper maps MCP calls, sandbox skill calls, thoughts, and text deltas cleanly", () => {
@@ -328,6 +461,30 @@ describe("Solution Agent Definition, Python Skill & Stream Mapper", () => {
     expect(textDelta).toEqual([{ type: "text", delta: "### Merge Verdict\nAPPROVE" }]);
     expect(mapper.interactionId).toBe("int_1");
     expect(mapper.environmentId).toBe("env_42");
+
+    const voiceStep = mapper.handle({
+      event: "step.start",
+      data: JSON.stringify({
+        index: 5,
+        step: {
+          type: "code_execution_call",
+          id: "call_voice_1",
+          arguments: {
+            code: "python3 /.agents/skills/gemini-api-dev/scripts/voice_notes.py speak --voice Kore --text 'Summary' --output /workspace/voice/out.wav",
+          },
+        },
+      }),
+    });
+    expect(voiceStep[0]).toEqual({
+      type: "step",
+      step: {
+        id: "s5",
+        kind: "code",
+        label: "Generating voice summary · Gemini 3.8 Flash-Lite TTS",
+        detail: "Voice · Kore",
+        state: "running",
+      },
+    });
   });
 });
 
@@ -549,5 +706,171 @@ describe("Solution Server End-to-End Vault, OAuth/PAT Auth, SSE Chat & Teardown"
     const me = (await meRes.json()) as { login: string; authMode: string };
     expect(me.login).toBe("pkce-dev");
     expect(me.authMode).toBe("oauth");
+  });
+
+  test("stages voice notes in sandbox, streams Smart Transcribe + Flash-Lite TTS summary, and isolates clips by session", async () => {
+    const uploadedFiles = new Map<string, Uint8Array>();
+    const createdCredHeaders = new Map<string, { header_name?: string; prefix?: string }>();
+    let capturedVoiceInteraction: Record<string, unknown> | undefined;
+
+    // Synthesize a valid 44-byte RIFF header + 64 PCM bytes for the mock sandbox output WAV.
+    const sampleWav = new Uint8Array(108);
+    sampleWav.set(new TextEncoder().encode("RIFF"), 0);
+    sampleWav.set(new TextEncoder().encode("WAVEfmt "), 8);
+    sampleWav.set(new TextEncoder().encode("data"), 36);
+
+    const mockFetch: typeof fetch = (async (input: Request | URL | string, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url === "https://api.github.com/user") {
+        return new Response(JSON.stringify({ id: 900, login: "voicedev", name: "Voice Dev", email: "v@example.com" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (url.endsWith("/v1beta/credentials") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as {
+          id: string;
+          header_name?: string;
+          prefix?: string;
+        };
+        createdCredHeaders.set(body.id, { header_name: body.header_name, prefix: body.prefix });
+        return new Response(JSON.stringify({ id: body.id, status: "ACTIVE" }), { status: 200 });
+      }
+
+      if (url.includes("/upload/v1beta/environments/env_voice_sandbox_1/files/") && init?.method === "PUT") {
+        const pathKey = decodeURIComponent(url.split("/files/")[1]!.split("?")[0]!);
+        const buf =
+          init.body instanceof Uint8Array
+            ? init.body
+            : new Uint8Array(await new Response(init.body as NonNullable<RequestInit["body"]>).arrayBuffer());
+        uploadedFiles.set(pathKey, buf);
+        return new Response(
+          JSON.stringify({
+            files: [{ name: "in.webm", path: pathKey, type: "FILE", size_bytes: String(buf.byteLength) }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (url.endsWith("/v1beta/interactions") && init?.method === "POST") {
+        const parsedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        if (!parsedBody.stream) {
+          return new Response(
+            JSON.stringify({ id: "int_bootstrap_1", status: "completed", environment_id: "env_voice_sandbox_1" }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        capturedVoiceInteraction = parsedBody;
+        const sse = [
+          `event: interaction.created\ndata: ${JSON.stringify({ interaction: { id: "int_voice_1", environment_id: "env_voice_sandbox_1" } })}\n\n`,
+          `event: step.start\ndata: ${JSON.stringify({
+            index: 0,
+            step: {
+              type: "code_execution_call",
+              id: "cv1",
+              arguments: {
+                code: "python3 /.agents/skills/gemini-api-dev/scripts/voice_notes.py transcribe --input /workspace/voice/in.webm",
+              },
+            },
+          })}\n\n`,
+          `event: step.start\ndata: ${JSON.stringify({ index: 1, step: { type: "code_execution_result", call_id: "cv1", exit_code: 0 } })}\n\n`,
+          `event: step.start\ndata: ${JSON.stringify({ index: 2, step: { type: "model_output" } })}\n\n`,
+          `event: step.delta\ndata: ${JSON.stringify({ index: 2, delta: { type: "text", text: "### Summary\nAll BudouX tests pass.\n\n### Verdict\nAPPROVE" } })}\n\n`,
+          `event: interaction.completed\ndata: ${JSON.stringify({ interaction: { status: "completed", environment_id: "env_voice_sandbox_1" } })}\n\n`,
+        ].join("");
+        return new Response(sse, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+
+      if (url.includes("/v1beta/environments/env_voice_sandbox_1/files/") && url.endsWith("?alt=media")) {
+        if (url.includes("transcript-")) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              model: "gemini-3.5-transcribe",
+              mode: "smart",
+              transcript: "Review the latest open PR on google/budoux.",
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.includes(".wav")) {
+          return new Response(sampleWav, { status: 200, headers: { "Content-Type": "audio/wav" } });
+        }
+        if (url.includes("out-") && url.includes(".json")) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              model: "gemini-3.8-flash-lite-tts",
+              voice: "Kore",
+              summary: "BudouX PR passes every unit test and is ready to approve.",
+            }),
+            { status: 200 },
+          );
+        }
+      }
+
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const { baseUrl } = await startTestServer("solution", {}, mockFetch);
+
+    const loginRes = await fetch(`${baseUrl}/auth/github`, { redirect: "manual" });
+    expect(loginRes.status).toBe(303);
+    expect(loginRes.headers.get("permissions-policy")).toContain("microphone=(self)");
+    expect(loginRes.headers.get("content-security-policy")).toContain("media-src 'self' blob:");
+    const cookie = cookiePair(loginRes);
+
+    const meRes = await fetch(`${baseUrl}/api/me`, { headers: { Cookie: cookie } });
+    const me = (await meRes.json()) as { csrfToken: string };
+
+    // Verify Gemini API Vault credential used x-goog-api-key with empty prefix
+    const geminiCredEntry = [...createdCredHeaders.entries()].find(([id]) => id.startsWith("review-g-"));
+    expect(geminiCredEntry?.[1]).toEqual({ header_name: "x-goog-api-key", prefix: "" });
+
+    const voiceRes = await fetch(`${baseUrl}/api/chat/voice`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "audio/webm",
+        "x-audio-mime": "audio/webm;codecs=opus",
+        "x-voice-name": "Kore",
+        "x-audio-duration": "4.2",
+        "x-time-zone": "America/Los_Angeles",
+        "x-csrf-token": me.csrfToken,
+      },
+      body: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+    });
+    expect(voiceRes.status).toBe(200);
+    const sseText = await voiceRes.text();
+    expect(sseText).toContain("Transcribing voice note · Gemini 3.5 Smart Mode");
+    expect(sseText).toContain('event: transcript\ndata: {"messageId":');
+    expect(sseText).toContain("Review the latest open PR on google/budoux.");
+    expect(sseText).toContain("BudouX PR passes every unit test and is ready to approve.");
+    expect(uploadedFiles.size).toBe(1);
+
+    // Verify generativelanguage.googleapis.com has the review-g- credential attached in allowlist
+    const envObj = capturedVoiceInteraction?.environment as { network?: { allowlist?: Array<Record<string, string>> } };
+    const geminiAllowRule = envObj.network?.allowlist?.find((r) => r.domain === "generativelanguage.googleapis.com");
+    expect(String(geminiAllowRule?.credential)).toStartWith("review-g-");
+
+    // Extract assistant audioUrl and verify session-isolated playback
+    const audioMatch = /"audioUrl":"(\/api\/chat\/voice\/[a-f0-9]+)"/.exec(sseText);
+    const allMatches = [...sseText.matchAll(/"audioUrl":"(\/api\/chat\/voice\/[a-f0-9]+)"/g)];
+    expect(audioMatch).not.toBeNull();
+    expect(allMatches.length).toBe(2); // user recording + assistant TTS summary
+    const replyAudioPath = allMatches[1]![1]!;
+
+    const wavFetch = await fetch(`${baseUrl}${replyAudioPath}`, { headers: { Cookie: cookie } });
+    expect(wavFetch.status).toBe(200);
+    expect(wavFetch.headers.get("content-type")).toBe("audio/wav");
+    expect((await wavFetch.arrayBuffer()).byteLength).toBe(sampleWav.byteLength);
+
+    // Another signed-in session cannot read this session's audio clip
+    const otherLogin = await fetch(`${baseUrl}/auth/github`, { redirect: "manual" });
+    const otherCookie = cookiePair(otherLogin);
+    const crossSessionFetch = await fetch(`${baseUrl}${replyAudioPath}`, { headers: { Cookie: otherCookie } });
+    expect(crossSessionFetch.status).toBe(404);
   });
 });

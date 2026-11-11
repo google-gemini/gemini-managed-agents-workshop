@@ -2,20 +2,23 @@ import { randomBytes } from "node:crypto";
 
 export const AGENT_ID = "pr-reviewer";
 export const BASE_AGENT = "antigravity-preview-09-2026";
-/** Only per-session credentials with this prefix are created or swept by the janitor. */
+/** Only per-session credentials with these prefixes are created or swept by the janitor. */
 export const CREDENTIAL_PREFIX = "review-s-";
+export const GEMINI_CREDENTIAL_PREFIX = "review-g-";
 
 export const GITHUB_CLONE_HOST = "github.com";
 export const GITHUB_RAW_HOST = "*.githubusercontent.com";
 export const GITHUB_API_HOST = "api.github.com";
 export const GITHUB_MCP_HOST = "api.githubcopilot.com";
 export const GITHUB_MCP_URL = "https://api.githubcopilot.com/mcp/";
+export const GEMINI_API_HOST = "generativelanguage.googleapis.com";
 
 export const TURN_ALLOWLIST_DOMAINS = [
   GITHUB_CLONE_HOST,
   GITHUB_RAW_HOST,
   GITHUB_API_HOST,
   GITHUB_MCP_HOST,
+  GEMINI_API_HOST,
 ] as const;
 
 export const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;

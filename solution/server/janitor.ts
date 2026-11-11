@@ -1,7 +1,7 @@
 // Cleanup of remote resources (vault credentials + sandboxes) tied to sessions.
 
 import type { Store } from "express-session";
-import { ABSOLUTE_TIMEOUT_MS, CREDENTIAL_PREFIX } from "./config.ts";
+import { ABSOLUTE_TIMEOUT_MS, CREDENTIAL_PREFIX, GEMINI_CREDENTIAL_PREFIX } from "./config.ts";
 import type { GeminiClient } from "./gemini.ts";
 import { describeError, log } from "./log.ts";
 import type { RemoteResources } from "./types.ts";
@@ -9,11 +9,18 @@ import type { RemoteResources } from "./types.ts";
 const GRACE_MS = ABSOLUTE_TIMEOUT_MS + 15 * 60_000;
 const MAX_PAGES = 20;
 
+function isSessionCredentialId(id: string | undefined): id is string {
+  return Boolean(id && (id.startsWith(CREDENTIAL_PREFIX) || id.startsWith(GEMINI_CREDENTIAL_PREFIX)));
+}
+
 export async function cleanupRemoteResources(gemini: GeminiClient, resources: RemoteResources): Promise<void> {
   if (!gemini.isConfigured) return;
   const tasks: Array<Promise<void>> = [];
-  if (resources.credentialId && resources.credentialId.startsWith(CREDENTIAL_PREFIX)) {
+  if (isSessionCredentialId(resources.credentialId)) {
     tasks.push(gemini.deleteCredential(resources.credentialId));
+  }
+  if (isSessionCredentialId(resources.geminiCredentialId)) {
+    tasks.push(gemini.deleteCredential(resources.geminiCredentialId));
   }
   if (resources.environmentId) {
     tasks.push(gemini.deleteEnvironment(resources.environmentId));
@@ -33,7 +40,10 @@ function activeCredentialIds(store: Store): Promise<Set<string> | null> {
       if (err) return resolve(null);
       const list = Array.isArray(sessions) ? sessions : Object.values(sessions ?? {});
       const ids = new Set<string>();
-      for (const s of list) if (typeof s?.credentialId === "string") ids.add(s.credentialId);
+      for (const s of list) {
+        if (typeof s?.credentialId === "string") ids.add(s.credentialId);
+        if (typeof s?.geminiCredentialId === "string") ids.add(s.geminiCredentialId);
+      }
       resolve(ids);
     });
   });
@@ -49,7 +59,7 @@ export async function sweepOrphanedCredentials(gemini: GeminiClient, store: Stor
   for (let page = 0; page < MAX_PAGES; page++) {
     const res = await gemini.listCredentials(pageToken);
     for (const c of res.credentials) {
-      if (!c.id || !c.id.startsWith(CREDENTIAL_PREFIX) || active.has(c.id)) continue;
+      if (!isSessionCredentialId(c.id) || active.has(c.id)) continue;
       const created = Date.parse(c.create_time ?? "");
       if (!Number.isFinite(created) || now - created < GRACE_MS) continue;
       try {

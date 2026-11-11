@@ -9,6 +9,8 @@ declare module "express-session" {
     createdAt?: number;
     /** Gemini Credential Vault ID holding this session's GitHub token (never the raw token). */
     credentialId?: string;
+    /** Gemini Credential Vault ID holding this session's x-goog-api-key proxy credential. */
+    geminiCredentialId?: string;
     /** Single-use in-flight GitHub OAuth + PKCE state. */
     oauth?: PendingOAuth;
     /** Multi-turn Managed Agent handles and bounded transcript. */
